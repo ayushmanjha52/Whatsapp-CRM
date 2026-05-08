@@ -1,0 +1,32 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "<WABA_ID>",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550783881",
+              "phone_number_id": "106540352242922"
+            },
+            "contacts": [
+              { "profile": { "name": "Test" }, "wa_id": "16505551234" }
+            ],
+            "messages": [
+              {
+                "from": "16505551234",
+                "id": "wamid.TEST",
+                "timestamp": "1739230955",
+                "type": "text",
+                "text": { "body": "Hello" }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

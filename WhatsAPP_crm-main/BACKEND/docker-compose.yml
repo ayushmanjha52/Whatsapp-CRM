@@ -1,0 +1,65 @@
+version: "3.9"
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  api-gateway:
+    image: oven/bun:latest
+    working_dir: /app/BACKEND
+    volumes:
+      - ../:/app
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    command: ["bun", "run", "services/api-gateway/index.ts"]
+
+  whatsapp-webhook:
+    image: oven/bun:latest
+    working_dir: /app/BACKEND
+    volumes:
+      - ../:/app
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    command: ["bun", "run", "services/whatsapp-webhook/index.ts"]
+
+  inbox-service:
+    image: oven/bun:latest
+    working_dir: /app/BACKEND
+    volumes:
+      - ../:/app
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WORKER_CONCURRENCY_INBOUND=20
+    depends_on:
+      - redis
+    command: ["bun", "run", "services/inbox-service/index.ts"]
+
+  messaging-worker:
+    image: oven/bun:latest
+    working_dir: /app/BACKEND
+    volumes:
+      - ../:/app
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WORKER_CONCURRENCY_OUTBOUND=50
+    depends_on:
+      - redis
+    command: ["bun", "run", "services/messaging-worker/index.ts"]
+
+  media-uploads:
+    image: oven/bun:latest
+    working_dir: /app/BACKEND
+    volumes:
+      - ../:/app
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WORKER_CONCURRENCY_MEDIA=10
+    depends_on:
+      - redis
+    command: ["bun", "run", "services/media-uploads/index.ts"]

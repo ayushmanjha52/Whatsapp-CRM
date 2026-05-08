@@ -1,0 +1,53 @@
+{
+  "name": "backend",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@bull-board/api": "^6.14.2",
+    "@bull-board/fastify": "^6.14.2",
+    "@fastify/cookie": "^11.0.0",
+    "@fastify/cors": "^11.1.0",
+    "@fastify/helmet": "^12.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@fastify/sensible": "^6.0.4",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "@supabase/supabase-js": "^2.46.1",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.7.10",
+    "fastify": "^5.6.2",
+    "fastify-raw-body": "^5.0.0",
+    "fastify-socket.io": "^5.0.1",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.8.1",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "scripts": {
+    "gateway": "bun run services/api-gateway/index.ts",
+    "webhook": "bun run services/whatsapp-webhook/index.ts",
+    "worker": "bun run services/messaging-worker/index.ts",
+    "inbox": "bun run services/inbox-service/index.ts",
+    "dev:gateway": "bun run --watch services/api-gateway/index.ts",
+    "dev:webhook": "bun run --watch services/whatsapp-webhook/index.ts",
+    "dev:worker": "bun run --watch services/messaging-worker/index.ts",
+    "dev:inbox": "bun run --watch services/inbox-service/index.ts",
+    "hot:gateway": "bun run --hot services/api-gateway/index.ts",
+    "media": "bun run services/media-uploads/index.ts",
+    "dev:media": "bun run --watch services/media-uploads/index.ts",
+    "dev:all": "bunx npm-run-all --parallel dev:gateway dev:webhook dev:worker dev:inbox dev:media",
+    "dev:all:hot": "bunx npm-run-all --parallel hot:gateway dev:webhook dev:worker dev:inbox dev:media",
+    "test:onboarding": "bun run test/wa-onboarding.ts",
+    "test:send": "bun run test/wa-send-message.ts",
+    "test:bucket": "bun run test/storage-bucket-check.ts",
+    "test:enqueue-media": "bun run test/enqueue-media-job.ts",
+    "test:media-list": "bun run test/media-list.ts"
+  }
+}
