@@ -128,3 +128,48 @@ describe("buildCreateTemplateRequest", () => {
     expect(sanitizeTemplateName("  Hello World -- 2024 ")).toBe("hello_world_2024")
   })
 })
+
+describe("link buttons with a variable", () => {
+  const tpl: TemplateRow = {
+    name: "track_order",
+    language: "en_US",
+    components: [
+      { type: "BODY", text: "Hi {{1}}, your order shipped." },
+      { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Thanks" }, { type: "URL", text: "Track", url: "https://shop.test/track/{{1}}" }] }
+    ]
+  }
+
+  it("exposes each variable link as button.<index>", () => {
+    const shape = templateShape(tpl.components)
+    expect(shape.urlButtons).toEqual([{ index: 1, variable: "1", url: "https://shop.test/track/{{1}}" }])
+    expect(() => assertMappingComplete(shape, { "body.1": { source: "static", value: "x" } })).toThrow(TemplateMappingError)
+  })
+
+  it("sends the URL suffix as a button parameter", () => {
+    const { payload } = buildTemplateMessage(tpl, {
+      "body.1": { source: "field", field: "first_name" },
+      "button.1": { source: "field", field: "custom.order_id" }
+    }, { wa_id: "1", display_name: "Jane Doe", custom_fields: { order_id: "A-77" } })
+    expect(payload.template.components.at(-1)).toEqual({ type: "button", sub_type: "url", index: "1", parameters: [{ type: "text", text: "A-77" }] })
+  })
+})
+
+describe("creating templates with media headers and variable links", () => {
+  it("uses the upload handle as the header sample", () => {
+    const req = buildCreateTemplateRequest({ name: "promo", language: "en", category: "MARKETING", body: "Sale!", header_media: { format: "IMAGE", handle: "4::abc" }, header_text: "ignored" })
+    expect(req.components[0]).toEqual({ type: "HEADER", format: "IMAGE", example: { header_handle: ["4::abc"] } })
+  })
+
+  it("adds the full example URL Meta requires for a variable link", () => {
+    const req = buildCreateTemplateRequest({
+      name: "t", language: "en", category: "UTILITY", body: "Hi",
+      examples: { "button.0": "A-77" },
+      buttons: [{ type: "URL", text: "Track", url: "https://shop.test/track/{{1}}" }]
+    })
+    expect(req.components.at(-1).buttons[0].example).toEqual(["https://shop.test/track/A-77"])
+  })
+
+  it("rejects variables that are not a trailing {{1}}", () => {
+    expect(() => buildCreateTemplateRequest({ name: "t", language: "en", category: "UTILITY", body: "Hi", buttons: [{ type: "URL", text: "Go", url: "https://x.test/{{1}}/page" }] })).toThrow("url_variable")
+  })
+})

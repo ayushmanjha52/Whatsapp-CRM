@@ -17,6 +17,7 @@ export const TemplateSendModal: React.FC<{ open: boolean; onClose: () => void; c
   const [header, setHeader] = useState<Record<string, string>>({});
   const [body, setBody] = useState<Record<string, string>>({});
   const [mediaUrl, setMediaUrl] = useState('');
+  const [links, setLinks] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
   const qc = useQueryClient();
   const tpl = approved.find(t => `${t.name}|${t.language}` === key);
@@ -32,11 +33,12 @@ export const TemplateSendModal: React.FC<{ open: boolean; onClose: () => void; c
     const guess = (v: string) => (/^(1|name|first_name|customer_name)$/i.test(v) ? first : '');
     setBody(Object.fromEntries(tpl.shape.bodyVars.map(v => [v, guess(v)])));
     setHeader(Object.fromEntries(tpl.shape.headerVars.map(v => [v, guess(v)])));
-    setMediaUrl('');
+    setLinks(Object.fromEntries((tpl.shape.urlButtons || []).map(b => [String(b.index), ''])));
+    setMediaUrl(tpl.sample_media_url || '');
   }, [tpl?.name, tpl?.language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needsMedia = !!tpl?.shape.headerFormat && tpl.shape.headerFormat !== 'TEXT';
-  const complete = !!tpl && Object.values(body).every(v => v.trim()) && Object.values(header).every(v => v.trim()) && (!needsMedia || /^https?:\/\//.test(mediaUrl));
+  const complete = !!tpl && Object.values(body).every(v => v.trim()) && Object.values(header).every(v => v.trim()) && Object.values(links).every(v => v.trim()) && (!needsMedia || /^https?:\/\//.test(mediaUrl));
 
   const send = async () => {
     if (!tpl) return;
@@ -44,6 +46,7 @@ export const TemplateSendModal: React.FC<{ open: boolean; onClose: () => void; c
     try {
       const variables: Record<string, string> = {};
       for (const [k, v] of Object.entries(body)) variables[`body.${k}`] = v;
+      for (const [k, v] of Object.entries(links)) variables[`button.${k}`] = v;
       for (const [k, v] of Object.entries(header)) variables[`header.${k}`] = v;
       const { message } = await sendMessage(contact.wa_id, {
         type: 'template',
@@ -106,7 +109,16 @@ export const TemplateSendModal: React.FC<{ open: boolean; onClose: () => void; c
             {tpl?.shape.bodyVars.map(v => (
               <Input key={`b-${v}`} label={`Body {{${v}}}`} value={body[v] || ''} onChange={e => setBody(b => ({ ...b, [v]: e.target.value }))} />
             ))}
-            {tpl && tpl.shape.bodyVars.length === 0 && tpl.shape.headerVars.length === 0 && !needsMedia && (
+            {(tpl?.shape.urlButtons || []).map(b => (
+              <Input
+                key={`l-${b.index}`}
+                label={`Link “${tpl!.shape.buttons[b.index]?.text}”`}
+                value={links[String(b.index)] || ''}
+                onChange={e => setLinks(l => ({ ...l, [String(b.index)]: e.target.value }))}
+                hint={<span className="font-mono">{b.url.replace(/\{\{\s*1\s*\}\}$/, '…')}</span>}
+              />
+            ))}
+            {tpl && tpl.shape.bodyVars.length === 0 && (tpl.shape.urlButtons || []).length === 0 && tpl.shape.headerVars.length === 0 && !needsMedia && (
               <p className="text-sm text-slate-500">This template has no variables — it's ready to send.</p>
             )}
           </div>

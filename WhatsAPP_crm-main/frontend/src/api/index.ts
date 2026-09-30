@@ -174,6 +174,7 @@ export type TemplateInput = {
   language: string;
   category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
   header_text?: string;
+  header_media?: { format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'; url: string };
   body: string;
   footer?: string;
   examples?: Record<string, string>;

@@ -139,8 +139,9 @@ export default function CampaignWizard() {
       i === 0 || /name/i.test(v) ? { source: 'field', field: 'first_name', fallback: 'there' } : /company/i.test(v) ? { source: 'field', field: 'company', fallback: '' } : { source: 'static', value: '' };
     tpl.shape.headerVars.forEach((v, i) => (m[`header.${v}`] = guess(v, i)));
     tpl.shape.bodyVars.forEach((v, i) => (m[`body.${v}`] = guess(v, i)));
+    (tpl.shape.urlButtons || []).forEach(b => (m[`button.${b.index}`] = { source: 'static', value: '' }));
     setMapping(m);
-    setMediaUrl('');
+    setMediaUrl(tpl.sample_media_url || '');
   }, [tpl?.name, tpl?.language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isAdmin) return <EmptyState icon={Send} title="Admins only" body="Ask a workspace admin to send campaigns." />;
@@ -299,15 +300,16 @@ export default function CampaignWizard() {
                     <Select label="Template" value={tplKey} onChange={e => setTplKey(e.target.value)}>
                       {approved.map(t => <option key={`${t.name}|${t.language}`} value={`${t.name}|${t.language}`}>{t.name} ({t.language}) · {t.category.toLowerCase()}</option>)}
                     </Select>
-                    {tpl && tpl.shape.dynamicUrlButtons > 0 && (
-                      <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-3">This template has a link button with a variable, which campaigns don't support yet. Sends will fail — pick another template.</p>
-                    )}
                     {needsMedia && <Input label={`Header ${tpl!.shape.headerFormat!.toLowerCase()} URL`} placeholder="https://…" value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} hint="Public link to the image/video/document everyone receives." />}
                     {tpl && Object.keys(mapping).length > 0 ? (
                       <div className="space-y-2">
                         <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Personalize each variable</p>
                         {tpl.shape.headerVars.map(v => varRow(`header.${v}`, `header {{${v}}}`))}
                         {tpl.shape.bodyVars.map(v => varRow(`body.${v}`, `{{${v}}}`))}
+                        {(tpl.shape.urlButtons || []).map(b => varRow(`button.${b.index}`, `link ${tpl.shape.buttons[b.index]?.text || b.index}`))}
+                        {(tpl.shape.urlButtons || []).length > 0 && (
+                          <p className="text-xs text-slate-500 px-1">Link values replace the end of the button URL, e.g. <span className="font-mono">{tpl.shape.urlButtons[0].url.replace(/\{\{\s*1\s*\}\}$/, '<value>')}</span>.</p>
+                        )}
                       </div>
                     ) : (
                       tpl && <p className="text-sm text-slate-500">This template has no variables — everyone gets the same message.</p>

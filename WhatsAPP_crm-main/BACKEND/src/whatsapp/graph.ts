@@ -130,6 +130,35 @@ export function listPhoneNumbers(wabaId: string, token: string) {
   })
 }
 
+/**
+ * Meta's Resumable Upload API: returns the `header_handle` a media-header template
+ * needs as its sample. https://developers.facebook.com/docs/graph-api/guides/upload
+ */
+export async function uploadTemplateSample(appId: string, token: string, file: { bytes: Uint8Array; mimeType: string; fileName: string }): Promise<string> {
+  const session = await graph<{ id: string }>(`${appId}/uploads`, {
+    token,
+    method: "POST",
+    query: { file_name: file.fileName, file_length: file.bytes.byteLength, file_type: file.mimeType }
+  })
+  let res: Response
+  try {
+    res = await fetch(`${GRAPH_BASE}/${session.id}`, {
+      method: "POST",
+      headers: { Authorization: `OAuth ${token}`, file_offset: "0", "Content-Type": "application/octet-stream" },
+      body: file.bytes,
+      signal: AbortSignal.timeout(120_000)
+    })
+  } catch (e: any) {
+    throw new GraphError(`network_error: ${e?.message || e}`, 0)
+  }
+  const json: any = await res.json().catch(() => ({}))
+  if (!res.ok || !json?.h) {
+    const e = json?.error || {}
+    throw new GraphError(e.error_user_msg || e.message || `upload_failed_${res.status}`, res.status, e.code, e.error_subcode, e.error_user_title)
+  }
+  return json.h as string
+}
+
 export function getMediaUrl(mediaId: string, token: string) {
   return graph<{ url: string; mime_type: string; file_size: number }>(mediaId, { token })
 }

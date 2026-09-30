@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { FileText, Plus, RefreshCw, Trash2, Braces, X, Info } from 'lucide-react';
-import { createTemplate, deleteTemplate, syncTemplates, useTemplates, useWhatsAppStatus, type TemplateInput } from '../api';
+import { FileText, Plus, RefreshCw, Trash2, Braces, X, Info, Upload } from 'lucide-react';
+import { createTemplate, deleteTemplate, syncTemplates, uploadMedia, useTemplates, useWhatsAppStatus, type TemplateInput } from '../api';
 import { useAuth } from '../auth/AuthProvider';
 import { Badge, Button, ConfirmModal, EmptyState, ErrorState, IconButton, Input, Modal, PageLoader, Segmented, Select, Textarea, type Tone } from '../components/ui';
 import { TemplateBubble } from '../components/TemplatePreview';
@@ -28,7 +28,10 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
   const [name, setName] = useState('');
   const [language, setLanguage] = useState('en_US');
   const [category, setCategory] = useState<TemplateInput['category']>('MARKETING');
+  const [headerType, setHeaderType] = useState<'NONE' | 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT'>('NONE');
   const [header, setHeader] = useState('');
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [body, setBody] = useState('');
   const [footer, setFooter] = useState('');
   const [examples, setExamples] = useState<Record<string, string>>({});
@@ -39,6 +42,8 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
     if (open) {
       setName('');
       setHeader('');
+      setHeaderType('NONE');
+      setMediaUrl('');
       setBody('Hi {{1}}, ');
       setFooter('');
       setExamples({ '1': 'Jane' });
@@ -47,7 +52,9 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
   }, [open]);
 
   const bodyVars = vars(body);
-  const headerVars = vars(header);
+  const headerVars = headerType === 'TEXT' ? vars(header) : [];
+  const isMedia = headerType !== 'NONE' && headerType !== 'TEXT';
+  const urlVarButtons = buttons.map((b, i) => ({ b, i })).filter(({ b }) => b.type === 'URL' && /\{\{\s*1\s*\}\}$/.test(b.url || ''));
   const allVars = [...new Set([...headerVars, ...bodyVars])];
 
   const insertVar = () => {
@@ -60,14 +67,15 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
   };
 
   const shape: TemplateShape = {
-    headerFormat: header ? 'TEXT' : null,
-    headerText: header || null,
+    headerFormat: headerType === 'NONE' ? null : headerType === 'TEXT' ? (header ? 'TEXT' : null) : headerType,
+    headerText: headerType === 'TEXT' ? header || null : null,
     headerVars,
     bodyText: body,
     bodyVars,
     footerText: footer || null,
     buttons: buttons.filter(b => b.text).map(b => ({ type: b.type, text: b.text, url: b.url })),
-    dynamicUrlButtons: 0
+    urlButtons: urlVarButtons.map(({ b, i }) => ({ index: i, variable: '1', url: b.url || '' })),
+    dynamicUrlButtons: urlVarButtons.length
   };
 
   const save = async () => {
@@ -77,7 +85,8 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         name,
         language,
         category,
-        header_text: header || undefined,
+        header_text: headerType === 'TEXT' ? header || undefined : undefined,
+        header_media: isMedia ? { format: headerType as 'IMAGE' | 'VIDEO' | 'DOCUMENT', url: mediaUrl } : undefined,
         body,
         footer: footer || undefined,
         examples,
@@ -93,7 +102,25 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
     }
   };
 
-  const valid = /^[a-z0-9_ -]+$/i.test(name) && body.trim().length > 0 && allVars.every(v => examples[v]?.trim()) && buttons.every(b => b.text && (b.type !== 'URL' || /^https?:\/\//.test(b.url || '')));
+  const valid =
+    /^[a-z0-9_ -]+$/i.test(name) &&
+    body.trim().length > 0 &&
+    allVars.every(v => examples[v]?.trim()) &&
+    urlVarButtons.every(({ i }) => examples[`button.${i}`]?.trim()) &&
+    (!isMedia || !!mediaUrl) &&
+    buttons.every(b => b.text && (b.type !== 'URL' || /^https?:\/\//.test(b.url || '')));
+
+  const pickSample = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      setMediaUrl((await uploadMedia(file)).url);
+    } catch (e) {
+      toast.error('Upload failed', errorMessage(e));
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <Modal
@@ -121,7 +148,32 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
               {LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label} · {code}</option>)}
             </Select>
           </div>
-          <Input label="Header (optional)" value={header} onChange={e => setHeader(e.target.value)} maxLength={60} placeholder="Big news!" />
+          <div className="grid sm:grid-cols-3 gap-4 items-start">
+            <Select label="Header" value={headerType} onChange={e => setHeaderType(e.target.value as typeof headerType)}>
+              <option value="NONE">None</option>
+              <option value="TEXT">Text</option>
+              <option value="IMAGE">Image</option>
+              <option value="VIDEO">Video</option>
+              <option value="DOCUMENT">Document</option>
+            </Select>
+            {headerType === 'TEXT' && <Input label="Header text" value={header} onChange={e => setHeader(e.target.value)} maxLength={60} placeholder="Big news!" className="sm:col-span-2" />}
+            {isMedia && (
+              <div className="sm:col-span-2 space-y-1.5">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Sample {headerType.toLowerCase()}</p>
+                <label className="flex items-center gap-2 h-[42px] px-3.5 border border-dashed border-slate-300 rounded-xl text-sm text-slate-600 cursor-pointer hover:border-primary">
+                  <Upload size={15} />
+                  <span className="truncate">{uploading ? 'Uploading…' : mediaUrl ? decodeURIComponent(mediaUrl.split('/').pop() || '') : 'Choose a file for Meta’s review'}</span>
+                  <input
+                    type="file"
+                    hidden
+                    accept={headerType === 'IMAGE' ? 'image/jpeg,image/png' : headerType === 'VIDEO' ? 'video/mp4' : 'application/pdf'}
+                    onChange={e => pickSample(e.target.files?.[0])}
+                  />
+                </label>
+                <p className="text-xs text-slate-400">Each send can use a different file; this one is the review sample and default.</p>
+              </div>
+            )}
+          </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Body</label>
@@ -131,12 +183,15 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
             </div>
             <Textarea ref={bodyRef} value={body} onChange={e => setBody(e.target.value)} rows={5} maxLength={1024} hint={`${body.length}/1024 · use *bold*, _italic_, ~strike~`} />
           </div>
-          {allVars.length > 0 && (
+          {(allVars.length > 0 || urlVarButtons.length > 0) && (
             <div className="p-4 bg-slate-50 rounded-xl space-y-3">
               <p className="text-xs text-slate-500 flex items-center gap-1.5"><Info size={12} /> Meta needs a sample value for every variable.</p>
               <div className="grid sm:grid-cols-2 gap-3">
                 {allVars.map(v => (
                   <Input key={v} label={`Example for {{${v}}}`} value={examples[v] || ''} onChange={e => setExamples(x => ({ ...x, [v]: e.target.value }))} />
+                ))}
+                {urlVarButtons.map(({ b, i }) => (
+                  <Input key={`btn-${i}`} label={`Example for link “${b.text || 'button'}”`} placeholder="e.g. order-123" value={examples[`button.${i}`] || ''} onChange={e => setExamples(x => ({ ...x, [`button.${i}`]: e.target.value }))} />
                 ))}
               </div>
             </div>
@@ -153,7 +208,7 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
             {buttons.map((b, i) => (
               <div key={i} className="flex gap-2 items-start">
                 <Input placeholder={b.type === 'URL' ? 'Visit website' : 'Yes, interested'} value={b.text} maxLength={25} onChange={e => setButtons(bs => bs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} className="flex-1" />
-                {b.type === 'URL' && <Input placeholder="https://…" value={b.url} onChange={e => setButtons(bs => bs.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} className="flex-1" />}
+                {b.type === 'URL' && <Input placeholder="https://… (end with {{1}} for a per-contact link)" value={b.url} onChange={e => setButtons(bs => bs.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} className="flex-1" />}
                 <IconButton icon={X} label="Remove button" onClick={() => setButtons(bs => bs.filter((_, j) => j !== i))} className="mt-0.5" />
               </div>
             ))}
@@ -161,7 +216,7 @@ const CreateTemplateModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         </div>
         <div className="chat-wallpaper rounded-2xl p-4 h-fit lg:sticky lg:top-0">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3">Preview</p>
-          <TemplateBubble shape={shape} body={examples} header={examples} />
+          <TemplateBubble shape={shape} body={examples} header={examples} headerMediaUrl={headerType === 'IMAGE' ? mediaUrl : null} />
         </div>
       </div>
     </Modal>

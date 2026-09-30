@@ -46,7 +46,8 @@ export type TemplateShape = {
   bodyVars: string[]
   footerText: string | null
   buttons: { type: string; text: string; url?: string; phone_number?: string }[]
-  /** Buttons whose URL contains a variable; sending these is not supported yet. */
+  /** Link buttons whose URL ends in a variable; each is mapped as "button.<index>". */
+  urlButtons: { index: number; variable: string; url: string }[]
   dynamicUrlButtons: number
 }
 
@@ -56,6 +57,10 @@ export function templateShape(components: any[]): TemplateShape {
   const footer = componentOf(components, "FOOTER")
   const buttons = componentOf(components, "BUTTONS")?.buttons || []
   const headerFormat = header ? String(header.format || "TEXT").toUpperCase() : null
+  const urlButtons = buttons
+    .map((b: any, index: number) => ({ index, variable: extractVariables(b.url)[0], url: b.url, type: b.type }))
+    .filter((b: any) => b.type === "URL" && b.variable)
+    .map(({ index, variable, url }: any) => ({ index, variable, url }))
   return {
     headerFormat,
     headerText: headerFormat === "TEXT" ? header.text || "" : null,
@@ -64,7 +69,8 @@ export function templateShape(components: any[]): TemplateShape {
     bodyVars: extractVariables(body?.text),
     footerText: footer?.text || null,
     buttons: buttons.map((b: any) => ({ type: b.type, text: b.text, url: b.url, phone_number: b.phone_number })),
-    dynamicUrlButtons: buttons.filter((b: any) => b.type === "URL" && extractVariables(b.url).length > 0).length
+    urlButtons,
+    dynamicUrlButtons: urlButtons.length
   }
 }
 
@@ -108,6 +114,7 @@ export function assertMappingComplete(shape: TemplateShape, mapping: VariableMap
   const missing: string[] = []
   for (const v of shape.headerVars) if (!mapping[`header.${v}`]) missing.push(`header.${v}`)
   for (const v of shape.bodyVars) if (!mapping[`body.${v}`]) missing.push(`body.${v}`)
+  for (const b of shape.urlButtons) if (!mapping[`button.${b.index}`]) missing.push(`button.${b.index}`)
   if (shape.headerFormat && ["IMAGE", "VIDEO", "DOCUMENT"].includes(shape.headerFormat) && !headerMediaUrl) missing.push("header.media")
   if (missing.length > 0) throw new TemplateMappingError(missing)
 }
@@ -159,6 +166,12 @@ export function buildTemplateMessage(
     components.push({ type: "body", parameters: params })
   }
 
+  // Link buttons take the value that replaces the URL's variable suffix.
+  for (const b of shape.urlButtons) {
+    const value = resolveVariable(mapping[`button.${b.index}`], contact).trim()
+    components.push({ type: "button", sub_type: "url", index: String(b.index), parameters: [{ type: "text", text: value || " " }] })
+  }
+
   const rendered = [
     shape.headerText ? render(shape.headerText, headerValues) : "",
     render(shape.bodyText, bodyValues),
@@ -190,8 +203,11 @@ export type CreateTemplateInput = {
   language: string
   category: "MARKETING" | "UTILITY" | "AUTHENTICATION"
   header_text?: string
+  /** Media header: `handle` comes from Meta's resumable upload API. */
+  header_media?: { format: "IMAGE" | "VIDEO" | "DOCUMENT"; handle: string }
   body: string
   footer?: string
+  /** Example values keyed by variable ("1", "first_name") or "button.<index>" for link buttons. */
   examples?: Record<string, string>
   buttons?: ({ type: "QUICK_REPLY"; text: string } | { type: "URL"; text: string; url: string } | { type: "PHONE_NUMBER"; text: string; phone_number: string })[]
 }
@@ -215,7 +231,9 @@ export function buildCreateTemplateRequest(input: CreateTemplateInput) {
   }
   const example = (v: string) => examples[v] || `example_${v}`
   const components: any[] = []
-  if (input.header_text) {
+  if (input.header_media) {
+    components.push({ type: "HEADER", format: input.header_media.format, example: { header_handle: [input.header_media.handle] } })
+  } else if (input.header_text) {
     const header: any = { type: "HEADER", format: "TEXT", text: input.header_text }
     if (headerVars.length > 0) {
       header.example = named
@@ -232,7 +250,17 @@ export function buildCreateTemplateRequest(input: CreateTemplateInput) {
   }
   components.push(body)
   if (input.footer) components.push({ type: "FOOTER", text: input.footer })
-  if (input.buttons && input.buttons.length > 0) components.push({ type: "BUTTONS", buttons: input.buttons })
+  if (input.buttons && input.buttons.length > 0) {
+    const buttons = input.buttons.map((b, i) => {
+      if (b.type !== "URL") return b
+      const vars = extractVariables(b.url)
+      if (vars.length === 0) return b
+      // Meta allows one variable, at the very end of the URL, and needs a full example URL.
+      if (vars.length > 1 || vars[0] !== "1" || !/\{\{\s*1\s*\}\}$/.test(b.url)) throw new Error("url_variable_must_be_trailing_{{1}}")
+      return { ...b, example: [b.url.replace(/\{\{\s*1\s*\}\}$/, examples[`button.${i}`] || "example")] }
+    })
+    components.push({ type: "BUTTONS", buttons })
+  }
   return {
     name: sanitizeTemplateName(input.name),
     language: input.language,

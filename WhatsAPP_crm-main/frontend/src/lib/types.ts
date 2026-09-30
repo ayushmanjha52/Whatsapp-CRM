@@ -104,6 +104,7 @@ export interface TemplateShape {
   bodyVars: string[];
   footerText: string | null;
   buttons: { type: string; text: string; url?: string; phone_number?: string }[];
+  urlButtons: { index: number; variable: string; url: string }[];
   dynamicUrlButtons: number;
 }
 
@@ -118,6 +119,7 @@ export interface Template {
   parameter_format: string | null;
   components: any[];
   shape: TemplateShape;
+  sample_media_url: string | null;
   updated_at: string;
 }
 
