@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { applyRealtimeEvent, connectRealtime, onConnectionChange, onRealtime } from '../lib/realtime';
-import { toast } from '../store/toast';
+import { setToastNavigator, toast } from '../store/toast';
 import { updateTask, useConversations, useTasks, useWhatsAppStatus } from '../api';
 import { Avatar, Badge, cn } from './ui';
 import { relativeFromNow } from '../lib/format';
@@ -33,6 +33,8 @@ function useRealtimeBridge() {
   const path = useRef(location.pathname);
   path.current = location.pathname;
   const [connected, setConnected] = useState(true);
+
+  useEffect(() => setToastNavigator(navigate), [navigate]);
 
   useEffect(() => {
     connectRealtime();

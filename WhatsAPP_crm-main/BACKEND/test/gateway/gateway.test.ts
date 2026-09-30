@@ -27,6 +27,7 @@ function builder(table: string) {
   let payload: any
   const exec = () => {
     if (op !== "select") writes.push({ table, op, payload })
+    if (op === "insert" || op === "upsert") return { data: Array.isArray(payload) ? payload : [payload], error: null, count: 1 }
     return { data: op === "select" ? rows : rows.map(r => ({ ...r, ...(payload || {}) })), error: null, count: rows.length }
   }
   const b: any = new Proxy({}, {
@@ -157,6 +158,12 @@ describe("gateway data access", () => {
     expect(writes).toContainEqual({ table: "contacts", op: "update", payload: { unread_count: 0 } })
   })
 
+  it("reports an unlimited plan when billing is not configured", async () => {
+    const res = await call("GET", "/api/billing", { token: "agent-token" })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ enabled: false, plan: { id: "business" } })
+  })
+
   it("redirects the Meta OAuth callback to the frontend with the code", async () => {
     const res = await call("GET", "/auth/whatsapp/callback?code=ABC&state=XYZ")
     expect(res.statusCode).toBe(302)
@@ -164,5 +171,64 @@ describe("gateway data access", () => {
     expect(loc.pathname).toBe("/settings")
     expect(loc.searchParams.get("code")).toBe("ABC")
     expect(loc.searchParams.get("state")).toBe("XYZ")
+  })
+})
+
+describe("stripe webhook", () => {
+  const secret = "whsec_test_secret"
+  const subEvent = (id: string, status: string) =>
+    JSON.stringify({
+      id,
+      object: "event",
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: "sub_1",
+          object: "subscription",
+          customer: "cus_1",
+          status,
+          cancel_at_period_end: false,
+          metadata: { tenant_id: "T1" },
+          items: { data: [{ price: { id: "price_growth" }, current_period_end: 1893456000 }] }
+        }
+      }
+    })
+
+  async function post(body: string, signature?: string) {
+    const { default: Stripe } = await import("stripe")
+    const header = signature ?? await new Stripe("sk_test_x").webhooks.generateTestHeaderStringAsync({ payload: body, secret })
+    return app.inject({ method: "POST", url: "/webhooks/stripe", headers: { "content-type": "application/json", "stripe-signature": header }, payload: body })
+  }
+
+  beforeAll(() => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_x"
+    process.env.STRIPE_WEBHOOK_SECRET = secret
+    process.env.STRIPE_PRICE_GROWTH = "price_growth"
+  })
+
+  it("rejects payloads with a bad signature", async () => {
+    const res = await post(subEvent("evt_bad", "active"), "t=1,v1=deadbeef")
+    expect(res.statusCode).toBe(400)
+  })
+
+  it("puts the tenant on the subscribed plan", async () => {
+    writes.length = 0
+    const res = await post(subEvent("evt_1", "active"))
+    expect(res.statusCode).toBe(200)
+    const update = writes.find(w => w.table === "tenants" && w.op === "update")
+    expect(update?.payload).toMatchObject({
+      plan: "growth",
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_1",
+      subscription_status: "active",
+      current_period_end: "2030-01-01T00:00:00.000Z"
+    })
+  })
+
+  it("drops back to starter when the subscription is canceled", async () => {
+    writes.length = 0
+    await post(subEvent("evt_2", "canceled"))
+    const update = writes.find(w => w.table === "tenants" && w.op === "update")
+    expect(update?.payload).toMatchObject({ plan: "starter", subscription_status: "canceled", stripe_subscription_id: null })
   })
 })

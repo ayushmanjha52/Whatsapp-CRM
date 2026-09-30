@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Radio, Clock, Send, CheckCircle2, XCircle, Loader2, FileEdit, CornerDownRight } from 'lucide-react';
-import { useCampaigns } from '../../api';
+import { Plus, Radio, Clock, Send, CheckCircle2, XCircle, Loader2, FileEdit, CornerDownRight, Sparkles } from 'lucide-react';
+import { useBilling, useCampaigns } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
 import { Badge, Button, EmptyState, ErrorState, PageLoader, type Tone } from '../../components/ui';
 import { compact, dateTime, pct } from '../../lib/format';
@@ -54,6 +54,7 @@ export default function Broadcasts() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const { data, isLoading, error, refetch } = useCampaigns();
+  const { data: billing } = useBilling();
 
   if (isLoading) return <PageLoader />;
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
@@ -67,6 +68,14 @@ export default function Broadcasts() {
         </div>
         {isAdmin && <Button icon={Plus} onClick={() => navigate('/broadcast/new')}>New campaign</Button>}
       </div>
+
+      {billing?.enabled && !billing.plan.features.broadcasts && (
+        <div className="p-4 rounded-xl bg-violet-50 border border-violet-200 flex flex-col sm:flex-row sm:items-center gap-3">
+          <Sparkles className="text-violet-600" size={20} />
+          <p className="text-sm text-violet-900 flex-1">Broadcasts are part of the <b>Growth</b> plan. Upgrade to send campaigns to your lists.</p>
+          {isAdmin && <Button size="sm" onClick={() => navigate('/settings?tab=billing')}>See plans</Button>}
+        </div>
+      )}
 
       {!data || data.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200/70">

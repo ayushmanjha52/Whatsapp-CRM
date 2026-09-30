@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { User, Smartphone, Users, Copy, CheckCircle2, PlugZap, Unplug, KeyRound, Star, Mail, Trash2, ShieldCheck, AlertTriangle, ExternalLink } from 'lucide-react';
+import { User, Smartphone, Users, CreditCard, Copy, CheckCircle2, PlugZap, Unplug, KeyRound, Star, Mail, Trash2, ShieldCheck, AlertTriangle, ExternalLink } from 'lucide-react';
 import {
   changePassword, completeOnboarding, connectManual, disconnectWhatsApp, getOAuthUrl, inviteMember, removeMember, setDefaultSender,
   updateMember, updateProfile, useTeam, useWhatsAppStatus
@@ -10,8 +10,9 @@ import { useAuth } from '../auth/AuthProvider';
 import { Avatar, Badge, Button, Card, CardHeader, ConfirmModal, IconButton, Input, PageLoader, Select, cn } from '../components/ui';
 import { errorMessage } from '../lib/api';
 import { toast } from '../store/toast';
+import { BillingTab } from './settings/BillingTab';
 
-type Tab = 'profile' | 'whatsapp' | 'team';
+type Tab = 'profile' | 'whatsapp' | 'team' | 'billing';
 
 const CopyField: React.FC<{ label: string; value: string | null; hint?: string }> = ({ label, value, hint }) => {
   const [copied, setCopied] = useState(false);
@@ -387,12 +388,13 @@ const TeamTab: React.FC = () => {
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
-  const tab = (['profile', 'whatsapp', 'team'].includes(params.get('tab') || '') ? params.get('tab') : params.get('code') ? 'whatsapp' : 'profile') as Tab;
+  const tab = (['profile', 'whatsapp', 'team', 'billing'].includes(params.get('tab') || '') ? params.get('tab') : params.get('code') ? 'whatsapp' : 'profile') as Tab;
   const { data: wa } = useWhatsAppStatus();
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'whatsapp', label: 'WhatsApp', icon: Smartphone },
-    { id: 'team', label: 'Team', icon: Users }
+    { id: 'team', label: 'Team', icon: Users },
+    { id: 'billing', label: 'Billing', icon: CreditCard }
   ];
   return (
     <div className="p-4 lg:p-8 max-w-[1200px] mx-auto space-y-6">
@@ -411,6 +413,7 @@ export default function Settings() {
       {tab === 'profile' && <ProfileTab />}
       {tab === 'whatsapp' && <WhatsAppTab />}
       {tab === 'team' && <TeamTab />}
+      {tab === 'billing' && <BillingTab />}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { toMessageDTO } from "../../../src/whatsapp/messages"
 import { buildTemplateMessage, templateShape, assertMappingComplete, TemplateMappingError, type VariableMapping } from "../../../src/whatsapp/templates"
 import { getTenantWhatsApp } from "../../../src/whatsapp/credentials"
 import { markRead } from "../../../src/whatsapp/graph"
+import { assertConversationQuota } from "../../../src/billing/entitlements"
 
 const listQuery = z.object({
   filter: z.enum(["all", "unread", "vip", "archived"]).default("all"),
@@ -107,6 +108,7 @@ export default async function conversationRoutes(app: FastifyInstance) {
     const body = parse(sendSchema, req.body)
     const contact = await getContact(req.auth.tenantId, waId)
     await enforceSendRate(req.auth.tenantId)
+    await assertConversationQuota(req.auth.tenantId, contact.wa_id)
 
     let payload: Record<string, any>
     if (body.type === "template") {

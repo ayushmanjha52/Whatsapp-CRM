@@ -331,6 +331,41 @@ export function disconnectWhatsApp() {
   return api('/api/whatsapp/disconnect', { method: 'POST' });
 }
 
+// ============ Billing ============
+
+export type PlanInfo = {
+  id: 'starter' | 'growth' | 'business';
+  name: string;
+  price: number;
+  blurb: string;
+  conversations: number | null;
+  seats: number | null;
+  features: { broadcasts: boolean; ai: boolean };
+};
+
+export type Billing = {
+  enabled: boolean;
+  plan: PlanInfo;
+  status: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  has_customer: boolean;
+  usage: { conversations: number; seats: number };
+  plans: PlanInfo[];
+};
+
+export function useBilling() {
+  return useQuery({ queryKey: ['billing'], queryFn: () => api<Billing>('/api/billing'), staleTime: 60_000 });
+}
+
+export function startCheckout(plan: 'growth' | 'business') {
+  return api<{ url: string }>('/api/billing/checkout', { method: 'POST', body: { plan } });
+}
+
+export function openBillingPortal() {
+  return api<{ url: string }>('/api/billing/portal', { method: 'POST' });
+}
+
 // ============ Account ============
 
 export function updateProfile(name: string) {

@@ -9,6 +9,7 @@ import { assertMappingComplete, TemplateMappingError, templateShape } from "../.
 import {
   addRecipients, cancelCampaign, resolveAudience, resolveSegment, scheduleDispatch, type Audience, type Segment
 } from "../../../src/crm/campaigns"
+import { assertFeature } from "../../../src/billing/entitlements"
 
 const variableSource = z.discriminatedUnion("source", [
   z.object({ source: z.literal("field"), field: z.string().min(1), fallback: z.string().max(200).optional() }),
@@ -92,6 +93,7 @@ async function validateTemplate(tenantId: string, body: z.infer<typeof messageSc
 /** Creates the campaign row + recipient snapshot, and schedules it unless saved as a draft. */
 async function createCampaign(req: any, body: z.infer<typeof messageSchema>, contactIds: number[], parentId: number | null) {
   const tenantId = req.auth.tenantId
+  await assertFeature(tenantId, "broadcasts")
   if (contactIds.length === 0) throw unprocessable("empty_audience", "No contacts match this audience (opted-out contacts are excluded)")
   const wa = await getTenantWhatsApp(tenantId)
   if (!wa) throw unprocessable("whatsapp_not_connected", "Connect a WhatsApp number in Settings first")
@@ -206,6 +208,7 @@ export default async function campaignRoutes(app: FastifyInstance) {
     const body = parse(z.object({ scheduled_at: z.string().datetime({ offset: true }).optional().nullable() }), req.body)
     const campaign = await loadCampaign(req.auth.tenantId, id)
     if (campaign.status !== "draft") throw conflict("not_a_draft", "Only draft campaigns can be sent")
+    await assertFeature(req.auth.tenantId, "broadcasts")
     const at = body.scheduled_at ? new Date(body.scheduled_at) : new Date()
     must(await supabaseAdmin().from("campaigns").update({ status: "scheduled", scheduled_at: at.toISOString() }).eq("id", id), "schedule_campaign")
     await scheduleDispatch(id, at)

@@ -245,3 +245,19 @@ describe("crm_dashboard", () => {
     expect(r.r.volume.length).toBeGreaterThanOrEqual(7)
   })
 })
+
+describe("crm_conversations_this_month", () => {
+  it("counts distinct chats with a message this calendar month", async () => {
+    const db = await freshDb()
+    const thisMonth = new Date().toISOString()
+    const lastMonth = new Date(Date.now() - 40 * 86400e3).toISOString()
+    await ingest(db, "1901", "wamid.C1", "a", thisMonth)
+    await ingest(db, "1901", "wamid.C2", "b", thisMonth)
+    await ingest(db, "1902", "wamid.C3", "c", thisMonth)
+    await ingest(db, "1903", "wamid.C4", "old", lastMonth)
+    const r = await one<{ n: number }>(db, `select crm_conversations_this_month($1) as n`, [T])
+    expect(r.n).toBe(2)
+    const plan = await one<{ plan: string }>(db, `select plan from tenants where id = $1`, [T])
+    expect(plan.plan).toBe("starter")
+  })
+})

@@ -3,6 +3,7 @@ import { z } from "zod"
 import { supabaseAdmin, must } from "../../../src/common/db"
 import { requireAdmin } from "../../../src/http/auth"
 import { badRequest, conflict, notFound, parse } from "../../../src/http/errors"
+import { assertSeatAvailable } from "../../../src/billing/entitlements"
 
 const MEMBER_SELECT = "id,user_id,email,name,role,status,created_at"
 
@@ -38,6 +39,7 @@ export default async function teamRoutes(app: FastifyInstance) {
     const s = supabaseAdmin()
     const { data: existing } = await s.from("tenant_members").select("id").eq("tenant_id", req.auth.tenantId).ilike("email", body.email).maybeSingle()
     if (existing) throw conflict("already_member", "This person is already on the team")
+    await assertSeatAvailable(req.auth.tenantId)
     const row = must(
       await s.from("tenant_members").insert({
         tenant_id: req.auth.tenantId,
