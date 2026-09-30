@@ -331,6 +331,20 @@ export function disconnectWhatsApp() {
   return api('/api/whatsapp/disconnect', { method: 'POST' });
 }
 
+// ============ AI ============
+
+export function useAiStatus() {
+  return useQuery({
+    queryKey: ['ai-status'],
+    queryFn: () => api<{ configured: boolean; available: boolean }>('/api/ai/status'),
+    staleTime: 5 * 60_000
+  });
+}
+
+export function suggestReplies(waId: string) {
+  return api<{ suggestions: { text: string; label: string }[] }>(`/api/conversations/${waId}/suggest-replies`, { method: 'POST' });
+}
+
 // ============ Billing ============
 
 export type PlanInfo = {

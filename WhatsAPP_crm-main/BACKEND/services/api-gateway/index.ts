@@ -25,6 +25,7 @@ import dashboardRoutes from "./routes/dashboard"
 import teamRoutes from "./routes/team"
 import mediaRoutes, { MAX_UPLOAD_BYTES } from "./routes/media"
 import billingRoutes, { stripeWebhookRoutes } from "./routes/billing"
+import aiRoutes from "./routes/ai"
 import whatsappApi from "../whatsapp-api/index"
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -82,6 +83,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await api.register(teamRoutes)
     await api.register(mediaRoutes)
     await api.register(billingRoutes)
+    await api.register(aiRoutes)
     await api.register(whatsappApi, { prefix: "/whatsapp" })
   }, { prefix: "/api" })
 

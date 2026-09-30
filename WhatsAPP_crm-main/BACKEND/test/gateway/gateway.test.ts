@@ -232,3 +232,14 @@ describe("stripe webhook", () => {
     expect(update?.payload).toMatchObject({ plan: "starter", subscription_status: "canceled", stripe_subscription_id: null })
   })
 })
+
+describe("ai suggestions", () => {
+  it("explains when the server has no Anthropic key", async () => {
+    const saved = process.env.ANTHROPIC_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+    const res = await call("POST", "/api/conversations/15550001/suggest-replies", { token: "agent-token", csrf: true })
+    expect(res.statusCode).toBe(422)
+    expect(res.json().error).toBe("ai_not_configured")
+    if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved
+  })
+})

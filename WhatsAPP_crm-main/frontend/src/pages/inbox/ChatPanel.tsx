@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Paperclip, Send, Smile, PanelRightOpen, FileText, X, Lock, Radio, Loader2 } from 'lucide-react';
-import { markRead, sendMessage, uploadMedia, useMessages } from '../../api';
+import { ArrowLeft, Paperclip, Send, Smile, PanelRightOpen, FileText, X, Lock, Radio, Loader2, Sparkles } from 'lucide-react';
+import { markRead, sendMessage, suggestReplies, uploadMedia, useAiStatus, useMessages } from '../../api';
 import { Avatar, Button, IconButton, Spinner, cn } from '../../components/ui';
 import { dayLabel, windowRemaining } from '../../lib/format';
 import { errorMessage } from '../../lib/api';
@@ -23,12 +23,27 @@ const Composer: React.FC<{ contact: Contact; onTemplate: () => void }> = ({ cont
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
+  const { data: ai } = useAiStatus();
+  const [suggestions, setSuggestions] = useState<{ text: string; label: string }[] | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
 
   useEffect(() => {
     setText('');
     setPending(null);
+    setSuggestions(null);
     ref.current?.focus();
   }, [contact.wa_id]);
+
+  const suggest = async () => {
+    setSuggesting(true);
+    try {
+      setSuggestions((await suggestReplies(contact.wa_id)).suggestions);
+    } catch (e) {
+      toast.error('No suggestions', errorMessage(e));
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -87,6 +102,30 @@ const Composer: React.FC<{ contact: Contact; onTemplate: () => void }> = ({ cont
 
   return (
     <div className="p-3 border-t border-slate-100 bg-white">
+      {suggestions && (
+        <div className="mb-2 p-2.5 bg-violet-50/60 border border-violet-100 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <div className="flex items-center justify-between mb-1.5 px-0.5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-violet-700 flex items-center gap-1"><Sparkles size={11} /> Suggested replies — pick one to edit</p>
+            <IconButton icon={X} label="Dismiss suggestions" className="w-6 h-6" onClick={() => setSuggestions(null)} />
+          </div>
+          <div className="grid md:grid-cols-3 gap-2">
+            {suggestions.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  setText(s.text);
+                  setSuggestions(null);
+                  setTimeout(() => ref.current?.focus(), 0);
+                }}
+                className="text-left p-2.5 bg-white rounded-lg border border-violet-100 hover:border-violet-300 hover:shadow-sm transition"
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wide text-violet-500 mb-0.5">{s.label}</p>
+                <p className="text-sm text-slate-700 line-clamp-4">{s.text}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {pending && (
         <div className="mb-2 flex items-center gap-3 p-2 bg-slate-50 rounded-xl border border-slate-200">
           {pending.preview ? <img src={pending.preview} alt="" className="w-12 h-12 rounded-lg object-cover" /> : <FileText className="text-primary m-2" />}
@@ -147,6 +186,18 @@ const Composer: React.FC<{ contact: Contact; onTemplate: () => void }> = ({ cont
           placeholder={pending ? 'Add a caption…' : 'Type a message'}
           className="flex-1 resize-none bg-transparent outline-none text-sm py-2 px-1 max-h-40"
         />
+        {ai?.available && (
+          <button
+            type="button"
+            onClick={suggest}
+            disabled={suggesting}
+            title="Suggest replies with AI"
+            aria-label="Suggest replies with AI"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-violet-500 hover:bg-violet-50 disabled:opacity-50"
+          >
+            {suggesting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+          </button>
+        )}
         <IconButton icon={Radio} label="Send template" onClick={onTemplate} />
         <button
           onClick={send}
