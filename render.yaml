@@ -1,0 +1,182 @@
+# Render Blueprint for WhatsApp CRM — https://render.com/docs/blueprint-spec
+#
+# Creates: one web service (UI + API + Socket.IO + Meta/Stripe webhooks), four background
+# workers, and a Key Value (Redis) instance. Supabase stays external.
+#
+# Deploy: Render Dashboard → New → Blueprint → pick this repo. Render asks once for every
+# `sync: false` value below. Use the SAME values for SUPABASE_URL, SUPABASE_SERVICE_ROLE and
+# DATA_ENCRYPTION_KEY on every service. Optional keys (Stripe, Anthropic) can be left empty.
+#
+# MIGRATE_BASELINE: set to 0016 if your Supabase database already has migrations
+# 0001–0016 (the original app was running on it); leave empty for a brand-new database.
+
+services:
+  - type: web
+    name: whatsapp-crm
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    dockerfilePath: ./WhatsAPP_crm-main/Dockerfile
+    dockerContext: ./WhatsAPP_crm-main
+    dockerCommand: bun run services/api-gateway/index.ts
+    preDeployCommand: bun run tools/migrate.ts
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - WhatsAPP_crm-main/BACKEND/**
+        - WhatsAPP_crm-main/frontend/**
+        - WhatsAPP_crm-main/Dockerfile
+      ignoredPaths:
+        - WhatsAPP_crm-main/BACKEND/test/**
+        - WhatsAPP_crm-main/**/*.md
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: whatsapp-crm-redis
+          property: connectionString
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: WHATSAPP_VERIFY_TOKEN
+        generateValue: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+      - key: MIGRATE_BASELINE
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_GROWTH
+        sync: false
+      - key: STRIPE_PRICE_BUSINESS
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+
+  - type: worker
+    name: whatsapp-crm-inbox
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    dockerfilePath: ./WhatsAPP_crm-main/Dockerfile
+    dockerContext: ./WhatsAPP_crm-main
+    dockerCommand: bun run services/inbox-service/index.ts
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - WhatsAPP_crm-main/BACKEND/**
+      ignoredPaths:
+        - WhatsAPP_crm-main/BACKEND/test/**
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: whatsapp-crm-redis
+          property: connectionString
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE
+        sync: false
+
+  - type: worker
+    name: whatsapp-crm-sender
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    dockerfilePath: ./WhatsAPP_crm-main/Dockerfile
+    dockerContext: ./WhatsAPP_crm-main
+    dockerCommand: bun run services/messaging-worker/index.ts
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - WhatsAPP_crm-main/BACKEND/**
+      ignoredPaths:
+        - WhatsAPP_crm-main/BACKEND/test/**
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: whatsapp-crm-redis
+          property: connectionString
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE
+        sync: false
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+
+  - type: worker
+    name: whatsapp-crm-media
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    dockerfilePath: ./WhatsAPP_crm-main/Dockerfile
+    dockerContext: ./WhatsAPP_crm-main
+    dockerCommand: bun run services/media-uploads/index.ts
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - WhatsAPP_crm-main/BACKEND/**
+      ignoredPaths:
+        - WhatsAPP_crm-main/BACKEND/test/**
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: whatsapp-crm-redis
+          property: connectionString
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE
+        sync: false
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+
+  - type: worker
+    name: whatsapp-crm-campaigns
+    runtime: docker
+    region: oregon
+    plan: 0.5c-512mb
+    dockerfilePath: ./WhatsAPP_crm-main/Dockerfile
+    dockerContext: ./WhatsAPP_crm-main
+    dockerCommand: bun run services/campaign-worker/index.ts
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - WhatsAPP_crm-main/BACKEND/**
+      ignoredPaths:
+        - WhatsAPP_crm-main/BACKEND/test/**
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: whatsapp-crm-redis
+          property: connectionString
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE
+        sync: false
+
+  # Queues live here: noeviction so BullMQ never loses jobs; no external access.
+  - type: keyvalue
+    name: whatsapp-crm-redis
+    region: oregon
+    plan: 256mb
+    maxmemoryPolicy: noeviction
+    ipAllowList: []

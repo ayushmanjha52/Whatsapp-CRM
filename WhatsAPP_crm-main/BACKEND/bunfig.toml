@@ -1,0 +1,3 @@
+[test]
+# Embedded Postgres (PGlite) migrations can take several seconds on a busy machine.
+timeout = 60000

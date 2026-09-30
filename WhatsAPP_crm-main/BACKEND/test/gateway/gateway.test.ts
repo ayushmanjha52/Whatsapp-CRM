@@ -7,6 +7,16 @@ import { describe, it, expect, beforeAll, mock } from "bun:test"
 
 process.env.LOG_LEVEL = "silent"
 
+// A fake built frontend, so the gateway's SPA serving can be exercised.
+import { mkdtempSync, mkdirSync, writeFileSync } from "fs"
+import { tmpdir } from "os"
+import { join as joinPath } from "path"
+const staticDir = mkdtempSync(joinPath(tmpdir(), "crm-dist-"))
+mkdirSync(joinPath(staticDir, "assets"))
+writeFileSync(joinPath(staticDir, "index.html"), "<!doctype html><div id=root></div>")
+writeFileSync(joinPath(staticDir, "assets", "app-abc.js"), "console.log(1)")
+process.env.STATIC_DIR = staticDir
+
 type Row = Record<string, any>
 const tables: Record<string, Row[]> = {
   tenant_members: [
@@ -241,5 +251,34 @@ describe("ai suggestions", () => {
     expect(res.statusCode).toBe(422)
     expect(res.json().error).toBe("ai_not_configured")
     if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved
+  })
+})
+
+describe("single-service hosting", () => {
+  it("serves the app shell for client-side routes", async () => {
+    const res = await call("GET", "/inbox/15550001")
+    expect(res.statusCode).toBe(200)
+    expect(res.headers["content-type"]).toContain("text/html")
+    expect(res.body).toContain('<div id=root>')
+    expect(res.headers["content-security-policy"]).toContain("default-src 'self'")
+  })
+
+  it("serves hashed assets with long-lived caching", async () => {
+    const res = await call("GET", "/assets/app-abc.js")
+    expect(res.statusCode).toBe(200)
+    expect(res.headers["cache-control"]).toContain("immutable")
+  })
+
+  it("keeps JSON 404s for unknown API paths", async () => {
+    const res = await call("GET", "/api/nope", { token: "admin-token" })
+    expect(res.statusCode).toBe(404)
+    expect(res.json().error).toBe("not_found")
+  })
+
+  it("mounts the WhatsApp webhook and rejects unsigned payloads", async () => {
+    const bad = await call("GET", "/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=1")
+    expect(bad.statusCode).toBe(403)
+    const res = await app.inject({ method: "POST", url: "/webhooks/whatsapp", headers: { "content-type": "application/json" }, payload: "{}" })
+    expect(res.statusCode).toBe(401)
   })
 })

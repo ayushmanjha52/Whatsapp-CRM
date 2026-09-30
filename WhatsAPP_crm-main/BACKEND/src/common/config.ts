@@ -14,6 +14,7 @@ export type Env = {
   WEBHOOK_PORT: number
   FRONTEND_BASE_URL: string
   PUBLIC_WEBHOOK_URL: string
+  OAUTH_REDIRECT_URI: string
   COOKIE_SECURE: boolean
   COOKIE_DOMAIN?: string
   CORS_ORIGINS: string[]
@@ -21,6 +22,8 @@ export type Env = {
 }
 
 export function getEnv(): Env {
+  // On Render the public URL is known at runtime; use it when nothing more specific is set.
+  const publicBase = (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "")
   return {
     SUPABASE_URL: process.env.SUPABASE_URL || "",
     SUPABASE_SERVICE_ROLE: process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY || "",
@@ -34,9 +37,10 @@ export function getEnv(): Env {
     META_APP_SECRET: process.env.META_APP_SECRET || "",
     GRAPH_API_VERSION: process.env.GRAPH_API_VERSION || "v24.0",
     GATEWAY_PORT: Number(process.env.GATEWAY_PORT || process.env.PORT || 4000),
-    WEBHOOK_PORT: Number(process.env.WEBHOOK_PORT || 4001),
-    FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL || "http://localhost:3000",
-    PUBLIC_WEBHOOK_URL: process.env.PUBLIC_WEBHOOK_URL || "",
+    WEBHOOK_PORT: Number(process.env.WEBHOOK_PORT || process.env.PORT || 4001),
+    FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL || publicBase || "http://localhost:3000",
+    PUBLIC_WEBHOOK_URL: process.env.PUBLIC_WEBHOOK_URL || (publicBase ? `${publicBase}/webhooks/whatsapp` : ""),
+    OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI || (publicBase ? `${publicBase}/auth/whatsapp/callback` : ""),
     COOKIE_SECURE: process.env.COOKIE_SECURE === "1",
     COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || undefined,
     CORS_ORIGINS: (process.env.CORS_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean),

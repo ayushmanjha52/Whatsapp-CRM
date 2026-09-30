@@ -26,6 +26,10 @@ import teamRoutes from "./routes/team"
 import mediaRoutes, { MAX_UPLOAD_BYTES } from "./routes/media"
 import billingRoutes, { stripeWebhookRoutes } from "./routes/billing"
 import aiRoutes from "./routes/ai"
+import whatsappWebhookRoutes from "../../src/whatsapp/webhookRoutes"
+import fastifyStatic from "@fastify/static"
+import { existsSync, readFileSync } from "fs"
+import { join, sep } from "path"
 import whatsappApi from "../whatsapp-api/index"
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -88,6 +92,33 @@ export async function buildApp(): Promise<FastifyInstance> {
   }, { prefix: "/api" })
 
   await app.register(stripeWebhookRoutes)
+  // The gateway also receives Meta webhooks, so a single public service is enough.
+  await app.register(whatsappWebhookRoutes)
+
+  // Serve the built SPA from the same origin when STATIC_DIR points at frontend/dist.
+  const staticDir = process.env.STATIC_DIR
+  if (staticDir && existsSync(join(staticDir, "index.html"))) {
+    await app.register(fastifyStatic, {
+      root: staticDir,
+      wildcard: false,
+      index: false,
+      cacheControl: false,
+      setHeaders: (res, path) => {
+        res.setHeader("Cache-Control", path.includes(`${sep}assets${sep}`) ? "public, max-age=31536000, immutable" : "no-cache")
+      }
+    })
+    const indexHtml = readFileSync(join(staticDir, "index.html"), "utf8")
+    app.setNotFoundHandler((req, res) => {
+      const apiLike = /^\/(api|socket\.io|webhooks|admin)(\/|$)/.test(req.url)
+      if (req.method !== "GET" || apiLike) return res.status(404).send({ error: "not_found", message: "Not found" })
+      // Client-side routes (/inbox/…, /settings…) all load the app shell.
+      return res
+        .header("Cache-Control", "no-cache")
+        .header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' wss: ws:; frame-ancestors 'none'")
+        .type("text/html")
+        .send(indexHtml)
+    })
+  }
 
   // Meta redirects here after OAuth; the frontend finishes onboarding with the code.
   app.get("/auth/whatsapp/callback", async (req, res) => {

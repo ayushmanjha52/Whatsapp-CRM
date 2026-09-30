@@ -109,17 +109,17 @@ export default async function whatsappApi(app: FastifyInstance) {
         callback_url: env.PUBLIC_WEBHOOK_URL || null,
         verify_token: isAdmin ? env.WHATSAPP_VERIFY_TOKEN || null : null
       },
-      oauth_available: Boolean(env.META_APP_ID && env.META_APP_SECRET && process.env.OAUTH_REDIRECT_URI)
+      oauth_available: Boolean(env.META_APP_ID && env.META_APP_SECRET && env.OAUTH_REDIRECT_URI)
     }
   })
 
   app.get("/oauth-url", async (req, res) => {
     requireAdmin(req)
-    if (!env.META_APP_ID || !process.env.OAUTH_REDIRECT_URI) throw badRequest("oauth_not_configured", "META_APP_ID and OAUTH_REDIRECT_URI must be set")
+    if (!env.META_APP_ID || !env.OAUTH_REDIRECT_URI) throw badRequest("oauth_not_configured", "META_APP_ID and OAUTH_REDIRECT_URI must be set")
     const state = crypto.randomBytes(16).toString("hex")
     const url = new URL(`https://www.facebook.com/${env.GRAPH_API_VERSION}/dialog/oauth`)
     url.searchParams.set("client_id", env.META_APP_ID)
-    url.searchParams.set("redirect_uri", process.env.OAUTH_REDIRECT_URI)
+    url.searchParams.set("redirect_uri", env.OAUTH_REDIRECT_URI)
     url.searchParams.set("response_type", "code")
     url.searchParams.set("scope", [...REQUIRED_SCOPES, "business_management"].join(","))
     url.searchParams.set("state", state)
@@ -135,7 +135,7 @@ export default async function whatsappApi(app: FastifyInstance) {
     if (expectedState && body.state && expectedState !== body.state) throw badRequest("state_mismatch", "The connection request expired, please try again")
     res.clearCookie("wa_state", { path: "/", domain: env.COOKIE_DOMAIN })
 
-    const redirect = process.env.OAUTH_REDIRECT_URI || ""
+    const redirect = env.OAUTH_REDIRECT_URI
     let longToken: string
     let expiresIn: number
     let scopes: string[] = []

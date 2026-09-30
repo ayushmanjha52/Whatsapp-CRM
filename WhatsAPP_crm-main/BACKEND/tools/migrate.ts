@@ -29,6 +29,17 @@ try {
   await sql`create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())`
   const applied = new Set((await sql`select name from schema_migrations`).map((r: any) => r.name as string))
 
+  // For automated deploys: on the very first run, MIGRATE_BASELINE=0016 marks the
+  // hand-applied migrations as done instead of re-running them.
+  const envBaseline = process.env.MIGRATE_BASELINE
+  if (applied.size === 0 && envBaseline && arg("baseline") === undefined && !process.argv.includes("--status")) {
+    for (const f of files.filter(f => f <= `${envBaseline}￿`)) {
+      await sql`insert into schema_migrations (name) values (${f}) on conflict do nothing`
+      applied.add(f)
+    }
+    console.log(`First run: baselined through ${envBaseline} (MIGRATE_BASELINE).`)
+  }
+
   const baseline = arg("baseline")
   if (baseline !== undefined) {
     const upTo = files.filter(f => f <= `${baseline}￿`)
