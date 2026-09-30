@@ -7,7 +7,9 @@ A WhatsApp-native CRM and marketing platform for small businesses and sales team
 - **Inbox:** real-time chats with delivery and read ticks, media (images, video, audio, documents), search, and Unread / VIP / Archived filters. Each chat has a contact sidebar with notes, tags, a pipeline stage, and reminders. The composer enforces WhatsApp's 24-hour window and offers a template once it has closed.
 - **Pipeline:** drag-and-drop Kanban with deal values, per-stage totals, win rate, and time to convert. Adding a deal also puts the contact in the Inbox.
 - **Broadcasts:** send approved templates to tag-based lists, with per-contact variables (name, company, custom CSV fields), scheduling, cancellation, live progress, and a sent → delivered → read → replied funnel. Follow-up campaigns can target people who didn't reply or didn't read. Contacts who reply STOP are excluded automatically.
-- **Templates:** create templates with variable examples and a live preview, sync from Meta, and receive approval or rejection updates via webhook.
+- **Templates:** create templates with text, image, video or document headers, variable examples, quick replies and per-contact link buttons, with a live preview. Sync from Meta and receive approval or rejection updates via webhook.
+- **AI reply suggestions:** one click drafts three replies from the conversation, notes and pipeline stage (Claude Opus 5.5). The agent picks one, edits it, and sends it themselves.
+- **Billing:** Stripe subscriptions for Starter (free, 100 conversations/month), Growth ($29, broadcasts) and Business ($79, unlimited seats and AI). Checkout, the customer portal and webhooks are included. Limits apply only when `STRIPE_SECRET_KEY` is set; self-hosted installs without it get every feature.
 - **Contacts:** a unified list, CSV import with column mapping (quotes, `;` or tab delimiters, custom fields), tags, and bulk broadcast.
 - **Dashboard:** first-reply time and its distribution, message volume, pipeline health, broadcast performance, follow-ups due today, and a priority inbox.
 - **Team:** Admin and Agent roles, invites by email, and reminders that notify you when they're due.
@@ -112,6 +114,28 @@ bun run simulate:webhook --phone-number-id <your id> --from 15551234567 --name "
 
 ## Deploy
 
+### Render (one-click Blueprint)
+
+`render.yaml` at the repository root creates:
+
+- **whatsapp-crm:** a web service serving the app, API, Socket.IO and the Meta and Stripe webhooks from one origin.
+- **Four background workers:** inbox, sender, media and campaigns.
+- **A Key Value (Redis) instance:** `noeviction`, internal-only.
+
+All of them run the single image built from `Dockerfile`.
+
+1. Render Dashboard → **New → Blueprint** → connect this GitHub repo → **Apply**.
+2. Fill in the prompted values. Use the same `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE` and `DATA_ENCRYPTION_KEY` on every service. `DATABASE_URL` is the Supabase Postgres URI, which migrations need. Set `MIGRATE_BASELINE=0016` if the database already ran the original app, and leave it empty for a new one. Stripe and Anthropic keys are optional.
+3. Every deploy runs `bun run tools/migrate.ts` first, then health-checks `/healthz`.
+4. Point Meta's webhook at `https://<your-app>.onrender.com/webhooks/whatsapp`. The verify token is shown in **Settings → WhatsApp**.
+5. Optional integrations:
+   - **Stripe:** add a webhook to `https://<your-app>.onrender.com/webhooks/stripe`, then paste its signing secret into `STRIPE_WEBHOOK_SECRET`.
+   - **OAuth:** add `https://<your-app>.onrender.com/auth/whatsapp/callback` to the Meta app's valid OAuth redirect URIs.
+
+On a custom domain, set `PUBLIC_BASE_URL=https://crm.example.com` on the web service.
+
+### Docker Compose (any server)
+
 ```bash
 cd BACKEND
 cp .env.example .env    # production values: COOKIE_SECURE=1, FRONTEND_BASE_URL, PUBLIC_WEBHOOK_URL…
@@ -124,7 +148,7 @@ nginx serves the SPA and proxies `/api`, `/socket.io`, `/auth/whatsapp`, and `/w
 ## Testing
 
 ```bash
-cd BACKEND  && bun test && bun run typecheck   # 59 tests: SQL functions on embedded Postgres, domain logic, HTTP security
+cd BACKEND  && bun test && bun run typecheck   # 87 tests: SQL on embedded Postgres, domain logic, HTTP security, billing, AI, hosting
 cd frontend && bun test && bun run build       # CSV import and formatting tests; typecheck + production build
 cd BACKEND  && EMAIL=… PASSWORD=… bun run smoke   # end-to-end against a running stack with real Supabase
 ```
@@ -137,9 +161,8 @@ cd BACKEND  && EMAIL=… PASSWORD=… bun run smoke   # end-to-end against a run
 - Product requirements: [prd.md](prd.md)
 - WhatsApp Cloud API notes: [DOCS/whatsapp-cloud-api.md](DOCS/whatsapp-cloud-api.md)
 
-## Not included yet
+## Limits and notes
 
-- Stripe billing and plan limits.
-- AI reply suggestions.
-- Sending templates whose URL buttons contain variables.
-- Creating templates with media headers. Sending approved ones works.
+- Template link buttons support one variable, `{{1}}`, at the end of the URL; this is Meta's own rule.
+- AI suggestions are drafts only: nothing is sent without an agent choosing, editing and sending it.
+- Stripe metered usage or per-seat pricing isn't modelled. Plans are flat monthly prices.

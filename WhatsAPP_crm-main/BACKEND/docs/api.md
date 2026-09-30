@@ -77,7 +77,7 @@ Phone numbers must include a country code. They are stored as `wa_id` (digits on
 |---|---|---|
 | GET | `/templates` | Local mirror, including a parsed `shape` (variables, header format, buttons) |
 | POST | `/templates/sync` | Pull every template from Meta |
-| POST | `/templates` | `{ name, language, category, body, header_text?, footer?, examples?, buttons? }`. Submitted to Meta for review |
+| POST | `/templates` | `{ name, language, category, body, header_text? \| header_media?: { format: IMAGE\|VIDEO\|DOCUMENT, url }, footer?, examples?, buttons? }`. `header_media.url` must be a file uploaded via `POST /media`; it goes to Meta's resumable upload API for the review sample. A URL button may end in `{{1}}`; give its example as `examples["button.<index>"]`. Submitted to Meta for review |
 | DELETE | `/templates/:name` | Deletes all languages on Meta |
 
 Status changes (APPROVED/REJECTED/…) arrive through the `message_template_status_update` webhook.
@@ -102,7 +102,7 @@ Status changes (APPROVED/REJECTED/…) arrive through the `message_template_stat
   "body.2": { "source": "static", "value": "20%" } }
 ```
 
-Available fields: `name`, `first_name`, `phone`, `email`, `company`, `custom.<key>`. Contacts who replied STOP are always excluded. A reply within 7 days is attributed to the most recent campaign message.
+Keys are `header.<var>`, `body.<var>` and `button.<index>` (the value that replaces a link button's trailing `{{1}}`). Available fields: `name`, `first_name`, `phone`, `email`, `company`, `custom.<key>`. Contacts who replied STOP are always excluded. A reply within 7 days is attributed to the most recent campaign message.
 
 ## Tasks, dashboard, team, media, WhatsApp
 
@@ -123,6 +123,31 @@ Available fields: `name`, `first_name`, `phone`, `email`, `company`, `custom.<ke
 | POST | `/whatsapp/disconnect` | Admin |
 
 Connecting a number stores the token encrypted (AES-256-GCM), subscribes the app to the WABA's webhooks, and syncs templates.
+
+## Billing
+
+Active only when `STRIPE_SECRET_KEY` is set; otherwise every workspace has the Business feature set.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/billing` | `{ enabled, plan, status, current_period_end, cancel_at_period_end, usage: { conversations, seats }, plans }` |
+| POST | `/billing/checkout` | Admin. `{ plan: growth\|business }` → `{ url }` (Stripe Checkout) |
+| POST | `/billing/portal` | Admin. → `{ url }` (Stripe customer portal: change plan, cancel, invoices) |
+
+Limits return `402 upgrade_required` with `details.plan` naming the plan needed:
+
+- Starter: 100 conversations/month (new chats only; replies in counted chats and inbound messages are never blocked), 1 seat, no broadcasts, no AI.
+- Growth: unlimited conversations, 3 seats, broadcasts.
+- Business: unlimited seats, AI suggestions.
+
+`POST /webhooks/stripe` (public, signature-verified, idempotent per event) syncs the plan from the subscription's price (`STRIPE_PRICE_GROWTH` / `STRIPE_PRICE_BUSINESS`).
+
+## AI
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/ai/status` | `{ configured, available }` |
+| POST | `/conversations/:waId/suggest-replies` | → `{ suggestions: [{ text, label }] }` (three drafts). `422 ai_not_configured` without `ANTHROPIC_API_KEY`, `402` below Business, `429` past `AI_RATE_LIMIT_PER_MINUTE`, `422 ai_declined` on a model refusal |
 
 ## Realtime
 
