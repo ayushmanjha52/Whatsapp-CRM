@@ -1,8 +1,9 @@
 import { createClient } from "@supabase/supabase-js"
+import { env } from "./config"
 
+/** Anon-key client for Supabase Auth calls. A fresh client per call keeps sessions from leaking between requests. */
 export function supabaseAuth() {
-  const url = process.env.SUPABASE_URL || ""
-  const anon = process.env.SUPABASE_ANON_KEY || ""
-  return createClient(url, anon)
+  return createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  })
 }
-

@@ -1,20 +1,19 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Frontend
 
-# Run and deploy your AI Studio app
+React 19 + Vite + Tailwind CSS 4 + TanStack Query + React Router. See the [root README](../README.md) for setup.
 
-This contains everything you need to run your app locally.
+```bash
+bun install
+bun run dev        # http://localhost:3000, proxies /api and /socket.io to VITE_PROXY_TARGET (default :4000)
+bun run build      # typecheck + production build → dist/
+bun test           # unit tests for CSV import and formatting
+```
 
-View your app in AI Studio: https://ai.studio/apps/drive/1kmaFcThC9_MC6jkWkYLvBqaR7viRNdTt
+Layout:
 
-## Run Locally
+- `src/api`: typed data hooks, one per backend resource.
+- `src/lib`: fetch client (CSRF, refresh on 401), realtime cache updates, formatting, CSV parser, chart colors.
+- `src/components`: layout, UI kit, template preview.
+- `src/pages`: Dashboard, Inbox (`inbox/`), Pipeline, Broadcast (`broadcast/`), Contacts, Templates, Settings, Login, Landing.
 
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Server state lives in TanStack Query. Socket.IO events update or invalidate the cache (`src/lib/realtime.ts`), so every open tab stays in sync without polling.

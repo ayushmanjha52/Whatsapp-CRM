@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { MessageSquare, Check, ArrowRight, Zap, Users, BarChart3, Shield, Star, Play, Clock, Activity, Globe, Command, Inbox, LayoutDashboard } from 'lucide-react';
+import { MessageSquare, Check, ArrowRight, Zap, Users, BarChart3, Shield, Play, Clock, Activity, Globe, Command, LayoutDashboard } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -89,7 +90,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
           <div className="hidden md:flex items-center space-x-8 text-sm font-bold text-slate-500">
             <a href="#features" className="hover:text-primary transition-colors">Features</a>
             <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
-            <button 
+            <Link to="/login" className="hover:text-primary transition-colors">Sign in</Link>
+            <button
               onClick={onGetStarted}
               className="px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/10 hover:shadow-slate-900/20 active:scale-95 transform"
             >

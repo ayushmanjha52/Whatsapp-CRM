@@ -1,241 +1,226 @@
-import { z } from "zod"
+import type { FastifyInstance, FastifyRequest } from "fastify"
 import crypto from "crypto"
-import { supabaseAdmin } from "../../src/common/db"
-import { supabaseAuth } from "../../src/common/supabaseAuth"
-import { verifyAccessToken } from "../../src/auth/jwt"
-import { verifyCsrfToken } from "../../src/auth/csrf"
-import { encryptText, decryptText } from "../../src/security/crypto"
+import { z } from "zod"
+import { supabaseAdmin, must } from "../../src/common/db"
+import { env } from "../../src/common/config"
+import { encryptText } from "../../src/security/crypto"
+import { requireAdmin } from "../../src/http/auth"
+import { badRequest, conflict, parse } from "../../src/http/errors"
+import { GRAPH_BASE, GraphError, getPhoneNumber, graph, listPhoneNumbers, subscribeApp } from "../../src/whatsapp/graph"
+import { syncTemplates } from "../api-gateway/routes/templates"
 
-function makeState(): string { return crypto.randomBytes(16).toString("hex") }
-
-function requireCsrf(req: any) {
-  const headerToken = (req.headers["x-csrf-token"] as string) || (req.headers["csrf-token"] as string)
-  const ok = verifyCsrfToken(req.cookies?.csrf_token, headerToken)
-  if (!ok) throw req.server.httpErrors.forbidden("csrf_invalid")
-}
-
-async function requireAuth(req: any) {
-  const token = req.cookies?.sb_access_token || (req.headers["authorization"] as string)?.replace("Bearer ", "")
-  if (!token) throw req.server.httpErrors.unauthorized("missing_token")
-  const auth = supabaseAuth()
-  const { data } = await auth.auth.getUser(token)
-  if (data?.user) return data.user
-  const claims = verifyAccessToken(token)
-  return { id: claims.sub as string, email: claims.email as string }
-}
+const REQUIRED_SCOPES = ["whatsapp_business_management", "whatsapp_business_messaging"]
 
 function appAccessToken(): string {
-  const id = process.env.META_APP_ID || ""
-  const secret = process.env.META_APP_SECRET || ""
-  const explicit = process.env.META_APP_ACCESS_TOKEN
-  return explicit || (id && secret ? `${id}|${secret}` : "")
+  return process.env.META_APP_ACCESS_TOKEN || (env.META_APP_ID && env.META_APP_SECRET ? `${env.META_APP_ID}|${env.META_APP_SECRET}` : "")
 }
 
-const onboardingSchema = z.object({ code: z.string().min(10), waba_id: z.string().min(5).optional() })
+function graphFailure(e: unknown, code: string): never {
+  if (e instanceof GraphError) throw badRequest(code, e.details || e.message, e.toJSON())
+  throw e
+}
 
-export default async function whatsappApi(app: any) {
-  app.get("/oauth-url", async (req: any, res: any) => {
-    try { await requireAuth(req) } catch {}
-    const state = makeState()
-    const appId = process.env.META_APP_ID || ""
-    const redirect = process.env.OAUTH_REDIRECT_URI || ""
-    const scope = encodeURIComponent("whatsapp_business_management,whatsapp_business_messaging")
-    const url = `https://www.facebook.com/v24.0/dialog/oauth?client_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=${scope}&state=${state}`
-    const cookieSecure = process.env.COOKIE_SECURE === "1"
-    const cookieDomain = process.env.COOKIE_DOMAIN || undefined
-    res.setCookie("wa_state", state, { secure: cookieSecure, sameSite: "strict", path: "/", domain: cookieDomain })
-    return res.send({ url })
-  })
+/**
+ * Stores credentials for every phone number of a WABA, refusing numbers that another
+ * workspace already connected, then subscribes our app to the WABA's webhooks.
+ */
+async function storeCredentials(req: FastifyRequest, opts: {
+  wabaId: string
+  token: string
+  phones: any[]
+  scopes?: string[]
+  tokenExpiresAt?: string | null
+  dataAccessExpiresAt?: string | null
+}) {
+  const tenantId = req.auth.tenantId
+  const s = supabaseAdmin()
+  if (opts.phones.length === 0) throw badRequest("no_phone_numbers", "This WhatsApp Business Account has no phone numbers")
 
-  app.post("/complete-onboarding", async (req: any, res: any) => {
-    requireCsrf(req)
-    const user = await requireAuth(req)
-    const body = onboardingSchema.safeParse(req.body)
-    if (!body.success) return res.status(400).send({ error: "validation_error" })
-    const code = body.data.code
-    let wabaId = body.data.waba_id
+  const { data: taken } = await s
+    .from("whatsapp_credentials")
+    .select("phone_number_id,tenant_id,display_phone_number")
+    .in("phone_number_id", opts.phones.map(p => p.id))
+  const elsewhere = (taken || []).filter((c: any) => c.tenant_id !== tenantId)
+  if (elsewhere.length > 0) {
+    throw conflict("phone_already_connected", "This WhatsApp number is already connected to another workspace", {
+      phone_numbers: elsewhere.map((c: any) => c.display_phone_number || c.phone_number_id)
+    })
+  }
 
-    try {
-      const shortRes = await fetch(`https://graph.facebook.com/v24.0/oauth/access_token?client_id=${encodeURIComponent(process.env.META_APP_ID || "")}&client_secret=${encodeURIComponent(process.env.META_APP_SECRET || "")}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || "")}&code=${encodeURIComponent(code)}`)
-      if (!shortRes.ok) return res.status(400).send({ error: "oauth_exchange_failed" })
-      const shortJson: any = await shortRes.json()
-      const shortToken: string = shortJson.access_token
+  await s.from("tenants").upsert({ id: tenantId, name: req.auth.email || tenantId, status: "active" }, { onConflict: "id", ignoreDuplicates: true })
+  const { data: defaults } = await s.from("whatsapp_credentials").select("phone_number_id").eq("tenant_id", tenantId).eq("default_sender", true).limit(1)
+  const hasDefault = (defaults || []).length > 0
+  const tokenEnc = encryptText(opts.token)
+  const now = new Date().toISOString()
+  for (let i = 0; i < opts.phones.length; i++) {
+    const p = opts.phones[i]
+    must(
+      await s.from("whatsapp_credentials").upsert({
+        tenant_id: tenantId,
+        waba_id: opts.wabaId,
+        phone_number_id: p.id,
+        access_token_encrypted: tokenEnc,
+        token_expires_at: opts.tokenExpiresAt ?? null,
+        scopes: opts.scopes ?? null,
+        last_scope_check_at: now,
+        data_access_expires_at: opts.dataAccessExpiresAt ?? null,
+        display_phone_number: p.display_phone_number,
+        verified_name: p.verified_name,
+        status: p.status,
+        quality_rating: p.quality_rating,
+        account_mode: p.account_mode,
+        default_sender: hasDefault ? undefined : i === 0
+      }, { onConflict: "tenant_id,phone_number_id" }),
+      "store_credentials"
+    )
+  }
 
-      const longRes = await fetch(`https://graph.facebook.com/v24.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${encodeURIComponent(process.env.META_APP_ID || "")}&client_secret=${encodeURIComponent(process.env.META_APP_SECRET || "")}&fb_exchange_token=${encodeURIComponent(shortToken)}`)
-      if (!longRes.ok) return res.status(400).send({ error: "long_lived_exchange_failed" })
-      const longJson: any = await longRes.json()
-      const longToken: string = longJson.access_token
-      const expiresIn: number = longJson.expires_in ?? 5184000
+  let subscribed = true
+  try {
+    await subscribeApp(opts.wabaId, opts.token)
+  } catch (e: any) {
+    subscribed = false
+    req.log.warn({ err: e?.message, waba_id: opts.wabaId }, "waba_subscribe_failed")
+  }
+  let templates = 0
+  try {
+    templates = await syncTemplates(tenantId)
+  } catch (e: any) {
+    req.log.warn({ err: e?.message }, "template_sync_failed")
+  }
+  return { waba_id: opts.wabaId, phone_numbers: opts.phones.length, webhooks_subscribed: subscribed, templates_synced: templates }
+}
 
-      const debugRes = await fetch(`https://graph.facebook.com/v24.0/debug_token?input_token=${encodeURIComponent(longToken)}`, { headers: { Authorization: `Bearer ${appAccessToken()}` } })
-      if (!debugRes.ok) return res.status(400).send({ error: "debug_token_failed" })
-      const debugJson: any = await debugRes.json()
-      const scopes: string[] = debugJson?.data?.scopes || []
-      const dataAccessExp: number | undefined = debugJson?.data?.data_access_expires_at
-      const required = ["whatsapp_business_management", "whatsapp_business_messaging"]
-      const okScopes = required.every(s => scopes.includes(s))
-      if (!okScopes) return res.status(400).send({ error: "missing_scopes", scopes })
-
-      if (!wabaId) {
-        const bizRes = await fetch(`https://graph.facebook.com/v24.0/me/businesses`, { headers: { Authorization: `Bearer ${longToken}` } })
-        if (!bizRes.ok) return res.status(400).send({ error: "business_list_failed" })
-        const bizJson: any = await bizRes.json()
-        const businesses: any[] = bizJson.data || []
-        for (const b of businesses) {
-          const wabasRes = await fetch(`https://graph.facebook.com/v24.0/${encodeURIComponent(b.id)}/owned_whatsapp_business_accounts`, { headers: { Authorization: `Bearer ${longToken}` } })
-          const wabasJson: any = await wabasRes.json().catch(() => ({}))
-          const wabas: any[] = wabasJson.data || []
-          if (wabas.length > 0) { wabaId = wabas[0].id; break }
-        }
-        if (!wabaId) return res.status(400).send({ error: "waba_not_found" })
-      }
-
-      const phonesRes = await fetch(`https://graph.facebook.com/v24.0/${encodeURIComponent(wabaId)}/phone_numbers`, { headers: { Authorization: `Bearer ${longToken}` } })
-      if (!phonesRes.ok) return res.status(400).send({ error: "phone_numbers_fetch_failed" })
-      const phonesJson: any = await phonesRes.json()
-      const phones: any[] = phonesJson.data || []
-
-      const s = supabaseAdmin()
-
-      // Check if any of these phone numbers are already connected to another tenant
-      const phoneIds = phones.map((p: any) => p.id)
-      const { data: existingCreds } = await s
-        .from("whatsapp_credentials")
-        .select("phone_number_id, tenant_id, display_phone_number")
-        .in("phone_number_id", phoneIds)
-
-      const alreadyConnected = (existingCreds || []).filter((c: any) => c.tenant_id !== user.id)
-      if (alreadyConnected.length > 0) {
-        return res.status(409).send({
-          error: "phone_already_connected",
-          message: "This WhatsApp Business Account is already connected to another user",
-          phone_numbers: alreadyConnected.map((c: any) => c.display_phone_number || c.phone_number_id)
-        })
-      }
-
-      const tokenEnc = encryptText(longToken)
-      const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
-      const lastScopeCheckAt = new Date().toISOString()
-      const defaultSenderExists = await s.from("whatsapp_credentials").select("phone_number_id").eq("tenant_id", user.id).eq("default_sender", true).limit(1)
-      await s.from("tenants").upsert({ id: user.id, name: (user as any).email || user.id, status: "active" }, { onConflict: "id" })
-      for (let i = 0; i < phones.length; i++) {
-        const p = phones[i]
-        const { error } = await s.from("whatsapp_credentials").upsert({
-          tenant_id: user.id,
-          waba_id: wabaId,
-          phone_number_id: p.id,
-          access_token_encrypted: tokenEnc,
-          token_expires_at: tokenExpiresAt,
-          scopes,
-          last_scope_check_at: lastScopeCheckAt,
-          data_access_expires_at: dataAccessExp ? new Date(dataAccessExp * 1000).toISOString() : null,
-          display_phone_number: p.display_phone_number,
-          verified_name: p.verified_name,
-          status: p.status,
-          quality_rating: p.quality_rating,
-          account_mode: p.account_mode,
-          default_sender: (defaultSenderExists.data && defaultSenderExists.data.length > 0) ? false : i === 0
-        }, { onConflict: "tenant_id,phone_number_id" })
-        if (error) return res.status(500).send({ error: "store_failed" })
-      }
-
-      return res.send({ success: true, waba_id: wabaId, phone_numbers_count: phones.length })
-    } catch {
-      return res.status(500).send({ error: "onboarding_failed" })
+export default async function whatsappApi(app: FastifyInstance) {
+  app.get("/status", async req => {
+    const s = supabaseAdmin()
+    const rows = must(
+      await s.from("whatsapp_credentials")
+        .select("waba_id,phone_number_id,display_phone_number,verified_name,status,quality_rating,account_mode,default_sender,token_expires_at")
+        .eq("tenant_id", req.auth.tenantId),
+      "list_numbers"
+    ) as any[]
+    const isAdmin = req.auth.role === "admin"
+    return {
+      connected: rows.length > 0,
+      waba_id: rows[0]?.waba_id ?? null,
+      numbers: rows,
+      webhook: {
+        callback_url: env.PUBLIC_WEBHOOK_URL || null,
+        verify_token: isAdmin ? env.WHATSAPP_VERIFY_TOKEN || null : null
+      },
+      oauth_available: Boolean(env.META_APP_ID && env.META_APP_SECRET && process.env.OAUTH_REDIRECT_URI)
     }
   })
 
-  app.get("/credentials", async (req: any, res: any) => {
-    const user = await requireAuth(req)
-    const s = supabaseAdmin()
-    const { data, error } = await s.from("whatsapp_credentials").select("tenant_id,waba_id,phone_number_id,display_phone_number,verified_name,status,quality_rating,account_mode,token_expires_at,scopes,last_scope_check_at,data_access_expires_at,default_sender").eq("tenant_id", user.id)
-    if (error) return res.status(500).send({ error: "list_failed" })
-    return res.send({ credentials: data || [] })
+  app.get("/oauth-url", async (req, res) => {
+    requireAdmin(req)
+    if (!env.META_APP_ID || !process.env.OAUTH_REDIRECT_URI) throw badRequest("oauth_not_configured", "META_APP_ID and OAUTH_REDIRECT_URI must be set")
+    const state = crypto.randomBytes(16).toString("hex")
+    const url = new URL(`https://www.facebook.com/${env.GRAPH_API_VERSION}/dialog/oauth`)
+    url.searchParams.set("client_id", env.META_APP_ID)
+    url.searchParams.set("redirect_uri", process.env.OAUTH_REDIRECT_URI)
+    url.searchParams.set("response_type", "code")
+    url.searchParams.set("scope", [...REQUIRED_SCOPES, "business_management"].join(","))
+    url.searchParams.set("state", state)
+    if (process.env.META_CONFIG_ID) url.searchParams.set("config_id", process.env.META_CONFIG_ID)
+    res.setCookie("wa_state", state, { secure: env.COOKIE_SECURE, sameSite: "lax", path: "/", httpOnly: true, maxAge: 900, domain: env.COOKIE_DOMAIN })
+    return { url: url.toString() }
   })
 
-  app.get("/numbers", async (req: any, res: any) => {
-    const user = await requireAuth(req)
-    const s = supabaseAdmin()
-    const { data, error } = await s.from("whatsapp_credentials").select("phone_number_id,display_phone_number,verified_name,status,quality_rating,account_mode,default_sender").eq("tenant_id", user.id)
-    if (error) return res.status(500).send({ error: "list_failed" })
-    return res.send({ numbers: data || [] })
-  })
+  app.post("/complete-onboarding", async (req, res) => {
+    requireAdmin(req)
+    const body = parse(z.object({ code: z.string().min(10), state: z.string().optional(), waba_id: z.string().min(5).optional() }), req.body)
+    const expectedState = (req.cookies as any)?.wa_state
+    if (expectedState && body.state && expectedState !== body.state) throw badRequest("state_mismatch", "The connection request expired, please try again")
+    res.clearCookie("wa_state", { path: "/", domain: env.COOKIE_DOMAIN })
 
-  app.get("/templates", async (req: any, res: any) => {
-    const user = await requireAuth(req)
-    const s = supabaseAdmin()
-    const { data, error } = await s.from("templates").select("id,waba_id,name,language,category,status").eq("tenant_id", user.id)
-    if (error) return res.status(500).send({ error: "list_failed" })
-    return res.send({ templates: data || [] })
-  })
-
-  app.get("/verification", async (req: any, res: any) => {
-    const user = await requireAuth(req)
-    const s = supabaseAdmin()
-    const { data } = await s.from("whatsapp_credentials").select("waba_id,access_token_encrypted").eq("tenant_id", user.id).limit(1)
-    const row = data && data[0]
-    if (!row) return res.status(404).send({ error: "not_onboarded" })
-    const token = row.access_token_encrypted ? decryptText(row.access_token_encrypted) : ""
-    let verification: any = {}
+    const redirect = process.env.OAUTH_REDIRECT_URI || ""
+    let longToken: string
+    let expiresIn: number
+    let scopes: string[] = []
+    let dataAccessExp: number | undefined
     try {
-      const longTokenRes = await fetch(`https://graph.facebook.com/v24.0/me/businesses`, { headers: { Authorization: `Bearer ${token}` } })
-      const bizJson: any = await longTokenRes.json().catch(() => ({}))
-      const businesses: any[] = bizJson.data || []
-      if (businesses.length > 0) {
-        const bId = businesses[0].id
-        const bRes = await fetch(`https://graph.facebook.com/v24.0/${encodeURIComponent(bId)}?fields=name,verification_status`, { headers: { Authorization: `Bearer ${token}` } })
-        verification = await bRes.json().catch(() => ({}))
+      const short = await graph<any>(`${GRAPH_BASE}/oauth/access_token`, {
+        token: "",
+        query: { client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, redirect_uri: redirect, code: body.code }
+      })
+      const long = await graph<any>(`${GRAPH_BASE}/oauth/access_token`, {
+        token: "",
+        query: { grant_type: "fb_exchange_token", client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, fb_exchange_token: short.access_token }
+      })
+      longToken = long.access_token
+      expiresIn = long.expires_in ?? 60 * 24 * 3600
+      const debug = await graph<any>("debug_token", { token: appAccessToken(), query: { input_token: longToken } })
+      scopes = debug?.data?.scopes || []
+      dataAccessExp = debug?.data?.data_access_expires_at
+    } catch (e) {
+      graphFailure(e, "oauth_exchange_failed")
+    }
+    const missing = REQUIRED_SCOPES.filter(sc => !scopes.includes(sc))
+    if (missing.length > 0) throw badRequest("missing_scopes", `Grant these permissions and try again: ${missing.join(", ")}`)
+
+    let wabaId = body.waba_id
+    try {
+      if (!wabaId) {
+        const biz = await graph<any>("me/businesses", { token: longToken })
+        for (const b of biz.data || []) {
+          const wabas = await graph<any>(`${b.id}/owned_whatsapp_business_accounts`, { token: longToken }).catch(() => ({ data: [] }))
+          if (wabas.data?.length) { wabaId = wabas.data[0].id; break }
+        }
       }
-    } catch {}
-    return res.send({ verification })
+      if (!wabaId) throw badRequest("waba_not_found", "No WhatsApp Business Account was shared with this app")
+      const phones = await listPhoneNumbers(wabaId, longToken)
+      return await storeCredentials(req, {
+        wabaId,
+        token: longToken,
+        phones: phones.data || [],
+        scopes,
+        tokenExpiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        dataAccessExpiresAt: dataAccessExp ? new Date(dataAccessExp * 1000).toISOString() : null
+      })
+    } catch (e) {
+      graphFailure(e, "onboarding_failed")
+    }
   })
 
-  app.get("/analytics/messages", async (req: any, res: any) => {
-    const user = await requireAuth(req)
+  /** For System User permanent tokens (the usual setup without Embedded Signup). */
+  app.post("/connect-manual", async req => {
+    requireAdmin(req)
+    const body = parse(z.object({
+      waba_id: z.string().trim().regex(/^\d+$/, "Digits only"),
+      phone_number_id: z.string().trim().regex(/^\d+$/, "Digits only"),
+      access_token: z.string().trim().min(20)
+    }), req.body)
+    let phone: any
+    try {
+      phone = await getPhoneNumber(body.phone_number_id, body.access_token)
+      const all = await listPhoneNumbers(body.waba_id, body.access_token)
+      if (!(all.data || []).some((p: any) => p.id === body.phone_number_id)) {
+        throw badRequest("phone_not_in_waba", "That phone number ID does not belong to this WhatsApp Business Account")
+      }
+    } catch (e) {
+      graphFailure(e, "credentials_invalid")
+    }
+    return storeCredentials(req, { wabaId: body.waba_id, token: body.access_token, phones: [phone] })
+  })
+
+  app.post("/default-sender", async req => {
+    requireAdmin(req)
+    const body = parse(z.object({ phone_number_id: z.string().min(1) }), req.body)
     const s = supabaseAdmin()
-    const { data } = await s.from("events").select("type,data_json,created_at").eq("tenant_id", user.id).limit(1000)
-    const counts: Record<string, number> = {}
-    for (const e of data || []) counts[e.type] = (counts[e.type] || 0) + 1
-    return res.send({ counts })
+    const { data: owned } = await s.from("whatsapp_credentials").select("phone_number_id").eq("tenant_id", req.auth.tenantId).eq("phone_number_id", body.phone_number_id).maybeSingle()
+    if (!owned) throw badRequest("sender_not_owned")
+    must(await s.from("whatsapp_credentials").update({ default_sender: false }).eq("tenant_id", req.auth.tenantId).eq("default_sender", true), "clear_default")
+    must(await s.from("whatsapp_credentials").update({ default_sender: true }).eq("tenant_id", req.auth.tenantId).eq("phone_number_id", body.phone_number_id), "set_default")
+    return { success: true }
   })
 
-  app.get("/analytics/pricing", async (req: any, res: any) => {
-    const user = await requireAuth(req)
-    return res.send({ pricing: [] })
-  })
-
-  app.get("/analytics/templates", async (req: any, res: any) => {
-    const user = await requireAuth(req)
+  app.post("/disconnect", async req => {
+    requireAdmin(req)
     const s = supabaseAdmin()
-    const { data } = await s.from("templates").select("name,status,category").eq("tenant_id", user.id)
-    const counts: Record<string, number> = {}
-    for (const t of data || []) counts[t.status || "unknown"] = (counts[t.status || "unknown"] || 0) + 1
-    return res.send({ status_counts: counts, templates: data || [] })
-  })
-
-  app.get("/webhook/status", async (req: any, res: any) => {
-    const user = await requireAuth(req)
-    const s = supabaseAdmin()
-    const { data } = await s.from("whatsapp_webhook_settings").select("verify_token,callback_url,subscribed_at,last_signature_valid_at").eq("tenant_id", user.id).limit(1)
-    return res.send({ status: data && data[0] ? data[0] : {} })
-  })
-
-  app.post("/webhook/config", async (req: any, res: any) => {
-    requireCsrf(req)
-    const user = await requireAuth(req)
-    const body = (req.body || {}) as any
-    const s = supabaseAdmin()
-    const { error } = await s.from("whatsapp_webhook_settings").upsert({ tenant_id: user.id, verify_token: body.verify_token, callback_url: body.callback_url, subscribed_at: new Date().toISOString() }, { onConflict: "tenant_id" })
-    if (error) return res.status(500).send({ error: "save_failed" })
-    return res.send({ success: true })
-  })
-
-  app.post("/disconnect", async (req: any, res: any) => {
-    requireCsrf(req)
-    const user = await requireAuth(req)
-    const s = supabaseAdmin()
-    await s.from("whatsapp_credentials").delete().eq("tenant_id", user.id)
-    await s.from("whatsapp_webhook_settings").delete().eq("tenant_id", user.id)
-    return res.send({ success: true })
+    must(await s.from("whatsapp_credentials").delete().eq("tenant_id", req.auth.tenantId), "disconnect")
+    await s.from("whatsapp_webhook_settings").delete().eq("tenant_id", req.auth.tenantId)
+    return { success: true }
   })
 }

@@ -1,65 +1,62 @@
-version: "3.9"
+# Full stack: web (nginx + SPA) → api-gateway / whatsapp-webhook, workers, Redis.
+# Secrets come from BACKEND/.env (copy .env.example). Never put keys in this file.
+#
+#   docker compose up -d --build
+#   open http://localhost:8080
+x-backend: &backend
+  build: .
+  env_file: .env
+  environment:
+    REDIS_URL: redis://redis:6379
+  depends_on:
+    - redis
+  restart: unless-stopped
+
 services:
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # Queues live in Redis: keep persistence on so jobs survive restarts.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
 
   api-gateway:
-    image: oven/bun:latest
-    working_dir: /app/BACKEND
-    volumes:
-      - ../:/app
-    environment:
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - redis
+    <<: *backend
     command: ["bun", "run", "services/api-gateway/index.ts"]
+    ports:
+      - "4000:4000"
 
   whatsapp-webhook:
-    image: oven/bun:latest
-    working_dir: /app/BACKEND
-    volumes:
-      - ../:/app
-    environment:
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - redis
+    <<: *backend
     command: ["bun", "run", "services/whatsapp-webhook/index.ts"]
+    ports:
+      - "4001:4001"
 
   inbox-service:
-    image: oven/bun:latest
-    working_dir: /app/BACKEND
-    volumes:
-      - ../:/app
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - WORKER_CONCURRENCY_INBOUND=20
-    depends_on:
-      - redis
+    <<: *backend
     command: ["bun", "run", "services/inbox-service/index.ts"]
 
   messaging-worker:
-    image: oven/bun:latest
-    working_dir: /app/BACKEND
-    volumes:
-      - ../:/app
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - WORKER_CONCURRENCY_OUTBOUND=50
-    depends_on:
-      - redis
+    <<: *backend
     command: ["bun", "run", "services/messaging-worker/index.ts"]
 
   media-uploads:
-    image: oven/bun:latest
-    working_dir: /app/BACKEND
-    volumes:
-      - ../:/app
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - WORKER_CONCURRENCY_MEDIA=10
-    depends_on:
-      - redis
+    <<: *backend
     command: ["bun", "run", "services/media-uploads/index.ts"]
+
+  campaign-worker:
+    <<: *backend
+    command: ["bun", "run", "services/campaign-worker/index.ts"]
+
+  web:
+    build: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api-gateway
+      - whatsapp-webhook
+    restart: unless-stopped
+
+volumes:
+  redis-data:

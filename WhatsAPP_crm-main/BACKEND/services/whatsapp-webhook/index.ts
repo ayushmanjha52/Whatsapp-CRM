@@ -1,69 +1,47 @@
 import Fastify from "fastify"
-import rawBody from "fastify-raw-body"
-import crypto from "crypto"
-import { getEnv, Queues } from "../../src/common/config"
-import { queue } from "../../src/common/queue"
+import { env, Queues } from "../../src/common/config"
+import { queue, redis } from "../../src/common/queue"
+import { isValidSignature } from "../../src/whatsapp/signature"
 
-const env = getEnv()
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" }, bodyLimit: 5 * 1024 * 1024 })
+
+// Keep the exact bytes Meta signed; re-serialized JSON would not match the signature.
 app.removeContentTypeParser("application/json")
-app.addContentTypeParser("application/json", { parseAs: "string" }, (req: any, body: string, done: any) => {
-  ;(req as any).rawBody = body
-  try { done(null, JSON.parse(body)) } catch { done(new Error("invalid_json")) }
+app.addContentTypeParser("application/json", { parseAs: "buffer" }, (req: any, body: Buffer, done) => {
+  req.rawBody = body
+  try { done(null, JSON.parse(body.toString("utf8"))) } catch { done(new Error("invalid_json"), undefined) }
 })
-const missingEnv: string[] = []
-if (!env.WHATSAPP_APP_SECRET) missingEnv.push("WHATSAPP_APP_SECRET")
-if (!env.WHATSAPP_VERIFY_TOKEN) missingEnv.push("WHATSAPP_VERIFY_TOKEN")
-if (missingEnv.length > 0) app.log.warn({ missing: missingEnv }, "env_missing")
 
+if (!env.WHATSAPP_APP_SECRET || !env.WHATSAPP_VERIFY_TOKEN) {
+  app.log.warn({ app_secret: !!env.WHATSAPP_APP_SECRET, verify_token: !!env.WHATSAPP_VERIFY_TOKEN }, "webhook_env_missing")
+}
+
+app.get("/healthz", async () => ({ ok: true }))
+
+// Meta's subscription handshake.
 app.get("/webhooks/whatsapp", async (req, res) => {
-  const q: any = (req.query || {})
-  const mode = q["hub.mode"]
-  const token = q["hub.verify_token"]
-  const challenge = q["hub.challenge"]
-  if (mode === "subscribe" && token === env.WHATSAPP_VERIFY_TOKEN) {
-    return res.status(200).send(challenge)
+  const q = req.query as Record<string, string>
+  if (q["hub.mode"] === "subscribe" && env.WHATSAPP_VERIFY_TOKEN && q["hub.verify_token"] === env.WHATSAPP_VERIFY_TOKEN) {
+    return res.status(200).type("text/plain").send(q["hub.challenge"])
   }
   return res.status(403).send()
 })
 
-function validateSignature(req: any): boolean {
-  const secret = env.WHATSAPP_APP_SECRET || ""
-  const receivedHeader = (req.headers["x-hub-signature-256"] || "") as string
-  const received = receivedHeader.toString().trim().toLowerCase()
-  const body = req.rawBody
-  const devBypass = process.env.ALLOW_DEV_NO_SIGNATURE === "1"
-  if (devBypass && !received) return true
-  if (!secret || !received || !body) {
-    if (process.env.DEBUG_WEBHOOK_SIGNATURE === "1") {
-      app.log.info({ sig_header_present: !!received, secret_present: !!secret, raw_present: !!body }, "sig_prereq_missing")
-    }
-    return false
-  }
-  const expectedHex = crypto.createHmac("sha256", secret).update(body).digest("hex")
-  const receivedHex = received.replace(/^sha256=/, "")
-  const a = Buffer.from(expectedHex, "hex")
-  const b = Buffer.from(receivedHex, "hex")
-  const ok = a.length === b.length && crypto.timingSafeEqual(a, b)
-  if (process.env.DEBUG_WEBHOOK_SIGNATURE === "1") {
-    app.log.info({ match: ok, len_expected: a.length, len_received: b.length }, "sig_check_result")
-  }
-  return ok
-}
-
-app.post("/webhooks/whatsapp", async (req, res) => {
-  if (!validateSignature(req)) {
-    if (process.env.DEBUG_WEBHOOK_SIGNATURE === "1") app.log.info({ path: "/webhooks/whatsapp" }, "sig_invalid")
+app.post("/webhooks/whatsapp", async (req: any, res) => {
+  const header = req.headers["x-hub-signature-256"] as string | undefined
+  const devBypass = process.env.ALLOW_DEV_NO_SIGNATURE === "1" && !header
+  if (!devBypass && !isValidSignature(req.rawBody, header, env.WHATSAPP_APP_SECRET)) {
+    app.log.warn({ has_header: !!header }, "webhook_signature_invalid")
     return res.status(401).send()
   }
-  const body: any = req.body || {}
-  const q = queue(Queues.InboundEvents)
-  try {
-    const meta = { object: body?.object, entries: Array.isArray(body?.entry) ? body.entry.length : 0 }
-    app.log.info(meta, "webhook_enqueued")
-  } catch {}
-  await q.add("webhook", body)
+  const body = req.body || {}
+  await queue(Queues.InboundEvents).add("webhook", body)
+  app.log.info({ object: body.object, entries: Array.isArray(body.entry) ? body.entry.length : 0 }, "webhook_enqueued")
+  // Acknowledge fast: Meta retries if we take too long.
   return res.status(200).send()
 })
 
-app.listen({ port: Number(process.env.PORT || 4001), host: "0.0.0.0" })
+if (import.meta.main) {
+  await redis().ping().catch(e => app.log.error({ err: e?.message }, "redis_unreachable"))
+  await app.listen({ port: env.WEBHOOK_PORT, host: "0.0.0.0" })
+}

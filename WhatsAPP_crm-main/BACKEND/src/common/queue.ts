@@ -1,43 +1,56 @@
-import { Queue, Worker, type JobsOptions, QueueEvents, type WorkerOptions } from "bullmq"
-import Redis, { type RedisOptions } from "ioredis"
-import { getEnv } from "./config"
+import { Queue, Worker, type JobsOptions, type Processor, QueueEvents, type WorkerOptions } from "bullmq"
+import Redis from "ioredis"
+import { env } from "./config"
 
-const env = getEnv()
+let shared: Redis | null = null
+const queues = new Map<string, Queue>()
 
+/** Shared connection for commands and publishing. Never use it for SUBSCRIBE or blocking calls. */
 export function redis(): Redis {
+  if (!shared) shared = createRedisConnection()
+  return shared
+}
+
+/** A dedicated connection, for subscribers and BullMQ workers. */
+export function createRedisConnection(): Redis {
   return new Redis(env.REDIS_URL, { maxRetriesPerRequest: null })
-}
-
-function redisOptions(): RedisOptions {
-  try {
-    const u = new URL(env.REDIS_URL)
-    const opts: RedisOptions = {
-      host: u.hostname,
-      port: Number(u.port || 6379),
-      username: u.username || undefined,
-      password: u.password || undefined,
-      tls: u.protocol === "rediss:" ? {} : undefined,
-      maxRetriesPerRequest: null
-    }
-    return opts
-  } catch {
-    return { maxRetriesPerRequest: null }
-  }
-}
-
-export function queue(name: string): Queue {
-  return new Queue(name, { connection: redis(), defaultJobOptions: defaultJobOpts })
-}
-
-export function queueEvents(name: string): QueueEvents {
-  return new QueueEvents(name, { connection: redis() })
-}
-
-export function worker(name: string, handler: ConstructorParameters<typeof Worker>[1], options?: Pick<WorkerOptions, "concurrency">): Worker {
-  return new Worker(name, handler, { connection: redis(), concurrency: options?.concurrency ?? 1 })
 }
 
 export const defaultJobOpts: JobsOptions = {
   attempts: 5,
-  backoff: { type: "exponential", delay: 1000 }
+  backoff: { type: "exponential", delay: 1000 },
+  removeOnComplete: { age: 24 * 3600, count: 10000 },
+  removeOnFail: { age: 7 * 24 * 3600 }
+}
+
+export function queue(name: string): Queue {
+  let q = queues.get(name)
+  if (!q) {
+    q = new Queue(name, { connection: redis(), defaultJobOptions: defaultJobOpts })
+    queues.set(name, q)
+  }
+  return q
+}
+
+export function queueEvents(name: string): QueueEvents {
+  return new QueueEvents(name, { connection: createRedisConnection() })
+}
+
+export function worker<T = any>(
+  name: string,
+  handler: Processor<T>,
+  options?: Pick<WorkerOptions, "concurrency" | "limiter">
+): Worker<T> {
+  const w = new Worker<T>(name, handler, {
+    connection: createRedisConnection(),
+    concurrency: options?.concurrency ?? 1,
+    limiter: options?.limiter
+  })
+  w.on("failed", (job, err) => {
+    console.error(JSON.stringify({ event: "job_failed", queue: name, job_id: job?.id, attempts: job?.attemptsMade, message: err?.message }))
+  })
+  w.on("error", err => {
+    console.error(JSON.stringify({ event: "worker_error", queue: name, message: err?.message }))
+  })
+  return w
 }
