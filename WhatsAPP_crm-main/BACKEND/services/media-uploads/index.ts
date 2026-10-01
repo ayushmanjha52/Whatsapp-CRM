@@ -90,7 +90,7 @@ async function storeMessageMedia(job: JobData) {
   }
 }
 
-if (import.meta.main) {
+export function startMediaWorker() {
   assertEnv("media-uploads", ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE", "DATA_ENCRYPTION_KEY"])
   worker(Queues.MediaUploads, async job => {
     const data = job.data as JobData
@@ -99,3 +99,5 @@ if (import.meta.main) {
   }, { concurrency: Number(process.env.WORKER_CONCURRENCY_MEDIA || 5) })
   console.log(JSON.stringify({ event: "worker_started", queue: Queues.MediaUploads }))
 }
+
+if (import.meta.main) startMediaWorker()

@@ -97,7 +97,7 @@ export async function processWebhook(body: any) {
   }
 }
 
-if (import.meta.main) {
+export function startInboxWorker() {
   assertEnv("inbox-service", ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE"])
   // Every handler is idempotent, so a retried job cannot double-count a message.
   worker(Queues.InboundEvents, async job => processWebhook(job.data), {
@@ -105,3 +105,5 @@ if (import.meta.main) {
   })
   log("worker_started", { queue: Queues.InboundEvents })
 }
+
+if (import.meta.main) startInboxWorker()

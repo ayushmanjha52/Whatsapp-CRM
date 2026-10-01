@@ -34,6 +34,7 @@
     "inbox": "bun run services/inbox-service/index.ts",
     "media": "bun run services/media-uploads/index.ts",
     "campaigns": "bun run services/campaign-worker/index.ts",
+    "all": "bun run services/all-in-one/index.ts",
     "dev:gateway": "bun run --watch services/api-gateway/index.ts",
     "dev:webhook": "bun run --watch services/whatsapp-webhook/index.ts",
     "dev:worker": "bun run --watch services/messaging-worker/index.ts",

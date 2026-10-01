@@ -114,27 +114,37 @@ bun run simulate:webhook --phone-number-id <your id> --from 15551234567 --name "
 
 ## Deploy
 
-### Render (one-click Blueprint)
+### Render (free, one click)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ayushmanjha52/Whatsapp-CRM)
 
-`render.yaml` at the repository root creates:
+`render.yaml` uses only free instances:
 
-- **whatsapp-crm:** a web service serving the app, API, Socket.IO and the Meta and Stripe webhooks from one origin.
-- **Four background workers:** inbox, sender, media and campaigns.
-- **A Key Value (Redis) instance:** `noeviction`, internal-only.
+- **One free web service** running `services/all-in-one`: the app, API, Socket.IO, Meta and Stripe webhooks, and every queue worker in one process.
+- **A free Key Value (Redis) instance.**
 
-All of them run the single image built from `Dockerfile`.
+To deploy:
 
-1. Render Dashboard → **New → Blueprint** → connect this GitHub repo → **Apply**.
-2. Fill in the prompted values. Use the same `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE` and `DATA_ENCRYPTION_KEY` on every service. `DATABASE_URL` is the Supabase Postgres URI, which migrations need. Set `MIGRATE_BASELINE=0016` if the database already ran the original app, and leave it empty for a new one. Stripe and Anthropic keys are optional.
-3. Every deploy runs `bun run tools/migrate.ts` first, then health-checks `/healthz`.
-4. Point Meta's webhook at `https://<your-app>.onrender.com/webhooks/whatsapp`. The verify token is shown in **Settings → WhatsApp**.
-5. Optional integrations:
-   - **Stripe:** add a webhook to `https://<your-app>.onrender.com/webhooks/stripe`, then paste its signing secret into `STRIPE_WEBHOOK_SECRET`.
-   - **OAuth:** add `https://<your-app>.onrender.com/auth/whatsapp/callback` to the Meta app's valid OAuth redirect URIs.
+1. Click the button, sign in to Render, and Apply.
+2. Fill in the prompted values:
+   - `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE` from Supabase → Project Settings → API.
+   - `DATABASE_URL`: the Supabase Postgres connection string.
+   - `DATA_ENCRYPTION_KEY`: generate one with `openssl rand -hex 32`.
+   - `MIGRATE_BASELINE=0016` if this database already ran the original app; leave it empty for a new database.
+   - Meta, Stripe and Anthropic values are optional at first.
+3. When it's live, set Meta's webhook to `https://<your-app>.onrender.com/webhooks/whatsapp`. The verify token is in Settings → WhatsApp.
 
-On a custom domain, set `PUBLIC_BASE_URL=https://crm.example.com` on the web service.
+Migrations run automatically at startup.
+
+Free-tier trade-offs:
+
+- The service sleeps after 15 minutes without traffic. The next visit or Meta webhook wakes it in about a minute, and Meta retries.
+- Scheduled campaigns and reminders fire when it's awake.
+- The free Key Value has 25 MB and loses queued jobs if it restarts.
+
+For production, deploy `render.scale.yaml` instead: paid, with separate workers. In Render, choose New → Blueprint and set the Blueprint Path to `render.scale.yaml`.
+
+On a custom domain, set `PUBLIC_BASE_URL=https://crm.example.com`.
 
 ### Docker Compose (any server)
 

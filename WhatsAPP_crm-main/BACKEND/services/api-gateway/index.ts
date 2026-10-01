@@ -190,7 +190,7 @@ function startRealtime(app: FastifyInstance) {
   return sub
 }
 
-if (import.meta.main) {
+export async function startGateway() {
   assertEnv("api-gateway", ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE", "SUPABASE_ANON_KEY", "DATA_ENCRYPTION_KEY"])
   const app = await buildApp()
   await app.ready()
@@ -204,3 +204,5 @@ if (import.meta.main) {
   process.on("SIGTERM", shutdown)
   process.on("SIGINT", shutdown)
 }
+
+if (import.meta.main) await startGateway()

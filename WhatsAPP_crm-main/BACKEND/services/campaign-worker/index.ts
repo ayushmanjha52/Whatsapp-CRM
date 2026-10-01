@@ -23,7 +23,7 @@ async function taskDue(taskId: number, dueAt: string) {
   })
 }
 
-if (import.meta.main) {
+export function startCampaignWorker() {
   assertEnv("campaign-worker", ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE"])
 
   worker(Queues.CampaignDispatch, async job => {
@@ -42,3 +42,5 @@ if (import.meta.main) {
 
   console.log(JSON.stringify({ event: "worker_started", queues: [Queues.CampaignDispatch, Queues.Reminders] }))
 }
+
+if (import.meta.main) startCampaignWorker()

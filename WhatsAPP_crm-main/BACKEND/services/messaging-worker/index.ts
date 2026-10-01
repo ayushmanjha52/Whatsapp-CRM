@@ -87,7 +87,7 @@ async function processOutbound(job: Job<Job_>) {
   console.log(JSON.stringify({ event: "outbound_sent", tenant_id: msg.tenant_id, message_id: msg.id, wamid }))
 }
 
-if (import.meta.main) {
+export function startSenderWorker() {
   assertEnv("messaging-worker", ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE", "DATA_ENCRYPTION_KEY"])
   worker(Queues.OutboundMessages, processOutbound, {
     concurrency: Number(process.env.WORKER_CONCURRENCY_OUTBOUND || 20),
@@ -96,3 +96,5 @@ if (import.meta.main) {
   })
   console.log(JSON.stringify({ event: "worker_started", queue: Queues.OutboundMessages }))
 }
+
+if (import.meta.main) startSenderWorker()

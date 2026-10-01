@@ -19,8 +19,9 @@ export function createRedisConnection(): Redis {
 export const defaultJobOpts: JobsOptions = {
   attempts: 5,
   backoff: { type: "exponential", delay: 1000 },
-  removeOnComplete: { age: 24 * 3600, count: 10000 },
-  removeOnFail: { age: 7 * 24 * 3600 }
+  // Small Redis plans (e.g. Render free, 25 MB) need a short job history: JOB_HISTORY_LIMIT=100.
+  removeOnComplete: { age: 24 * 3600, count: Number(process.env.JOB_HISTORY_LIMIT || 10000) },
+  removeOnFail: { age: 7 * 24 * 3600, count: Number(process.env.JOB_HISTORY_LIMIT || 10000) * 5 }
 }
 
 export function queue(name: string): Queue {
