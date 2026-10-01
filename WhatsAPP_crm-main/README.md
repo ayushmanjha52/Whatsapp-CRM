@@ -171,7 +171,7 @@ cd BACKEND  && EMAIL=… PASSWORD=… bun run smoke   # end-to-end against a run
 
 - API reference: [BACKEND/docs/api.md](BACKEND/docs/api.md)
 - Product requirements: [prd.md](prd.md)
-- WhatsApp Cloud API notes: [DOCS/whatsapp-cloud-api.md](DOCS/whatsapp-cloud-api.md)
+- WhatsApp Cloud API reference: https://developers.facebook.com/docs/whatsapp/cloud-api
 
 ## Limits and notes
 

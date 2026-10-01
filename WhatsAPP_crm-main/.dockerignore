@@ -5,7 +5,4 @@
 !**/.env.example
 BACKEND/test
 BACKEND/docs
-DOCS
-img
-.trae
 **/*.log

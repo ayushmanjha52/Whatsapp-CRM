@@ -48,9 +48,6 @@
     "test": "bun test",
     "smoke": "bun run tools/smoke.ts",
     "simulate:webhook": "bun run tools/simulate-webhook.ts",
-    "tap": "bun run tools/realtime-tap.ts",
-    "test:bucket": "bun run test/storage-bucket-check.ts",
-    "test:enqueue-media": "bun run test/enqueue-media-job.ts",
-    "test:media-list": "bun run test/media-list.ts"
+    "tap": "bun run tools/realtime-tap.ts"
   }
 }
