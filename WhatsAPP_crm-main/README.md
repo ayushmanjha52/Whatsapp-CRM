@@ -116,6 +116,8 @@ bun run simulate:webhook --phone-number-id <your id> --from 15551234567 --name "
 
 ### Render (one-click Blueprint)
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ayushmanjha52/Whatsapp-CRM)
+
 `render.yaml` at the repository root creates:
 
 - **whatsapp-crm:** a web service serving the app, API, Socket.IO and the Meta and Stripe webhooks from one origin.
