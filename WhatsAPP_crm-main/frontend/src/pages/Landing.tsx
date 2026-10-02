@@ -110,14 +110,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
             variants={staggerContainer}
             className="space-y-8"
           >
-            <motion.div variants={fadeInUp} className="inline-flex items-center space-x-2 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-200 shadow-sm hover:shadow-md transition-shadow cursor-default">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-sm font-bold text-slate-600">v2.0 is now live</span>
-            </motion.div>
-
             <motion.h1 variants={fadeInUp} className="font-display font-bold text-6xl md:text-8xl text-slate-900 tracking-tight leading-[1.05] max-w-5xl mx-auto">
               Turn WhatsApp into a <br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 animate-gradient-x">Sales Machine.</span>
