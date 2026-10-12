@@ -1,7 +1,14 @@
 import { io, type Socket } from 'socket.io-client';
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
-import { API_BASE_URL } from './api';
+import { api, API_BASE_URL } from './api';
 import type { Message, Task } from './types';
+
+/**
+ * Set when the socket server lives on another origin than the page (e.g. the
+ * frontend on Vercel, the gateway on Render). Session cookies don't travel
+ * cross-site, so the socket then authenticates with a short-lived signed token.
+ */
+const SOCKET_URL: string = (import.meta.env.VITE_SOCKET_URL as string | undefined)?.replace(/\/$/, '') || '';
 
 export type RealtimeEvent = {
   event: string;
@@ -23,12 +30,20 @@ const statusListeners = new Set<(connected: boolean) => void>();
 
 export function connectRealtime(): Socket {
   if (socket) return socket;
-  socket = io(API_BASE_URL || window.location.origin, {
+  socket = io(SOCKET_URL || API_BASE_URL || window.location.origin, {
     path: '/socket.io/',
     withCredentials: true,
     transports: ['websocket', 'polling'],
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 10000
+    reconnectionDelayMax: 10000,
+    // Runs before every (re)connect, so a fresh token is fetched each time.
+    ...(SOCKET_URL && {
+      auth: (cb: (data: object) => void) => {
+        api<{ token: string }>('/api/auth/socket-token')
+          .then(r => cb({ token: r.token }))
+          .catch(() => cb({}));
+      }
+    })
   });
   socket.on('event', (e: RealtimeEvent) => listeners.forEach(l => l(e)));
   socket.on('connect', () => statusListeners.forEach(l => l(true)));

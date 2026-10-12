@@ -1,5 +1,7 @@
 # WhatsApp CRM
 
+**Live demo:** [whatsapp-crm-plum.vercel.app](https://whatsapp-crm-plum.vercel.app) · **Source:** [github.com/ayushmanjha52/Whatsapp-CRM](https://github.com/ayushmanjha52/Whatsapp-CRM)
+
 A WhatsApp-native CRM and marketing platform for small businesses and sales teams: a shared real-time inbox, a Kanban sales pipeline, template broadcasts with delivery analytics, and team roles. It is built on the official WhatsApp Cloud API.
 
 ## Features
@@ -114,13 +116,24 @@ bun run simulate:webhook --phone-number-id <your id> --from 15551234567 --name "
 
 ## Deploy
 
-### Render (free, one click)
+The live demo runs entirely on free tiers:
+
+| Part | Host | Config |
+|---|---|---|
+| Frontend | Vercel | `frontend/vercel.json` |
+| API, Socket.IO, webhooks, workers | Render web service + Key Value | `render.yaml` |
+| Postgres, Auth, Storage | Supabase | `BACKEND/migrations` |
+| Keep-alive | GitHub Actions | `.github/workflows/uptime.yml` |
+
+Vercel serves the SPA and rewrites `/api`, `/auth/whatsapp` and `/webhooks` to the backend, so the session cookies stay first-party. Websockets can't go through those rewrites, so the realtime socket connects to the backend directly and authenticates with a two-minute signed token from `/api/auth/socket-token`.
+
+### Backend on Render
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ayushmanjha52/Whatsapp-CRM)
 
 `render.yaml` uses only free instances:
 
-- **One free web service** running `services/all-in-one`: the app, API, Socket.IO, Meta and Stripe webhooks, and every queue worker in one process.
+- **One free web service** running `services/all-in-one`: the API, Socket.IO, Meta and Stripe webhooks, and every queue worker in one process. It also serves the app itself, so it works standalone.
 - **A free Key Value (Redis) instance.**
 
 To deploy:
@@ -134,13 +147,24 @@ To deploy:
    - Meta, Stripe and Anthropic values are optional at first.
 3. When it's live, set Meta's webhook to `https://<your-app>.onrender.com/webhooks/whatsapp`. The verify token is in Settings → WhatsApp.
 
-Migrations run automatically at startup.
+Migrations run automatically at startup. If the database can't be reached, the service starts anyway and applies them on the next restart; a migration that fails still stops it.
 
-Free-tier trade-offs:
+The free Key Value has 25 MB and loses queued jobs if it restarts.
 
-- The service sleeps after 15 minutes without traffic. The next visit or Meta webhook wakes it in about a minute, and Meta retries.
-- Scheduled campaigns and reminders fire when it's awake.
-- The free Key Value has 25 MB and loses queued jobs if it restarts.
+### Frontend on Vercel
+
+1. In Vercel, import the repository and set **Root Directory** to `WhatsAPP_crm-main/frontend`.
+2. In `frontend/vercel.json`, replace `whatsapp-crm-dwbo.onrender.com` with your backend's host. It appears in the rewrites and in `VITE_SOCKET_URL`.
+3. On Render, set `FRONTEND_BASE_URL` to the Vercel URL so email and WhatsApp sign-in links return there.
+
+### Keeping the free tiers awake
+
+Render's free service sleeps after 15 minutes without traffic, and Supabase pauses a free project after a week without activity. The uptime workflow covers both. Every 5 minutes it calls `/healthz?deep=1`, which pings Redis and runs a small database query.
+
+- To keep the database active even when the backend is down, add `SUPABASE_URL` and `SUPABASE_ANON_KEY` as repository secrets. The workflow then also queries Supabase directly.
+- GitHub turns off scheduled workflows after 60 days without a commit. Re-enable it under **Actions → Uptime**.
+- If Supabase has already paused the project, restore it from the Supabase dashboard. The backend reconnects on its own.
+- A service running all month uses about 744 of Render's 750 free instance hours.
 
 For production, deploy `render.scale.yaml` instead: paid, with separate workers. In Render, choose New → Blueprint and set the Blueprint Path to `render.scale.yaml`.
 
@@ -160,7 +184,7 @@ nginx serves the SPA and proxies `/api`, `/socket.io`, `/auth/whatsapp`, and `/w
 ## Testing
 
 ```bash
-cd BACKEND  && bun test && bun run typecheck   # 87 tests: SQL on embedded Postgres, domain logic, HTTP security, billing, AI, hosting
+cd BACKEND  && bun test && bun run typecheck   # 91 tests: SQL on embedded Postgres, domain logic, HTTP security, billing, AI, hosting
 cd frontend && bun test && bun run build       # CSV import and formatting tests; typecheck + production build
 cd BACKEND  && EMAIL=… PASSWORD=… bun run smoke   # end-to-end against a running stack with real Supabase
 ```

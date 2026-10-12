@@ -23,9 +23,19 @@ const arg = (name: string) => {
   return i >= 0 ? process.argv[i + 1] ?? "" : undefined
 }
 
+/** Exit code when the database can't be reached at all (EX_TEMPFAIL), as opposed to a failed migration. */
+const UNREACHABLE_EXIT_CODE = 75
+
 // No named prepared statements: they break behind Supabase's transaction pooler.
-const sql = new SQL({ url, prepare: false, max: 1 })
+const sql = new SQL({ url, prepare: false, max: 1, connectionTimeout: 20 })
 try {
+  try {
+    await sql`select 1`
+  } catch (err: any) {
+    console.error(`Database unreachable: ${err?.message || err}`)
+    await sql.close().catch(() => {})
+    process.exit(UNREACHABLE_EXIT_CODE)
+  }
   await sql`create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())`
   const applied = new Set((await sql`select name from schema_migrations`).map((r: any) => r.name as string))
 

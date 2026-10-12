@@ -13,12 +13,16 @@ import { startGateway } from "../api-gateway/index"
 
 assertEnv("all-in-one", ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE", "SUPABASE_ANON_KEY", "DATA_ENCRYPTION_KEY"])
 
-// Free plans have no pre-deploy step, so migrations run here. A failure stops startup
-// rather than serving the app against a schema it doesn't expect.
+// Free plans have no pre-deploy step, so migrations run here. A failed migration stops
+// startup rather than serving the app against a schema it doesn't expect. An unreachable
+// database (e.g. a paused free Supabase project) does not: the site, landing page and
+// health check stay up, and the next deploy or restart applies anything pending.
 if (process.env.DATABASE_URL) {
   const proc = Bun.spawn(["bun", "run", join(import.meta.dir, "../../tools/migrate.ts")], { stdout: "inherit", stderr: "inherit", env: process.env })
   const code = await proc.exited
-  if (code !== 0) {
+  if (code === 75) {
+    console.warn(JSON.stringify({ event: "migrations_deferred", reason: "database_unreachable" }))
+  } else if (code !== 0) {
     console.error(JSON.stringify({ event: "migrations_failed", code }))
     process.exit(code || 1)
   }

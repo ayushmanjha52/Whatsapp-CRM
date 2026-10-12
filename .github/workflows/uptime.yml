@@ -1,0 +1,50 @@
+# Keeps the live demo responsive.
+#
+# - Render's free instance sleeps after 15 minutes without traffic; a request every
+#   few minutes keeps it awake, so visitors never wait for a cold start.
+# - /healthz?deep=1 also runs a database query, which counts as activity and stops
+#   Supabase from pausing the free project after a week of inactivity.
+#
+# Optional: add SUPABASE_URL and SUPABASE_ANON_KEY as repository secrets to also query
+# Supabase directly, so the database stays active even if the backend is down.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      HEALTH_URL: https://whatsapp-crm-dwbo.onrender.com/healthz?deep=1
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+    steps:
+      - name: Backend and database
+        run: |
+          # A sleeping instance takes up to a minute to wake, so retry before failing.
+          for attempt in 1 2 3 4; do
+            if body=$(curl -fsS -m 60 "$HEALTH_URL"); then
+              echo "$body"
+              exit 0
+            fi
+            echo "Attempt $attempt failed, retrying in 20s"
+            sleep 20
+          done
+          exit 1
+
+      - name: Database (direct)
+        if: ${{ always() && env.SUPABASE_URL != '' }}
+        run: |
+          curl -fsS -m 30 -o /dev/null -w "Supabase HTTP %{http_code}\n" \
+            "$SUPABASE_URL/rest/v1/tenants?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY"

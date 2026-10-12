@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify"
+import crypto from "crypto"
 import { supabaseAdmin } from "../common/db"
 import { supabaseAuth } from "../common/supabaseAuth"
 import { env } from "../common/config"
@@ -150,5 +151,40 @@ export function issueCsrf(res: FastifyReply): string {
 export function clearSessionCookies(res: FastifyReply) {
   for (const name of ["sb_access_token", "sb_refresh_token", "csrf_token"]) {
     res.clearCookie(name, { path: "/", domain: env.COOKIE_DOMAIN })
+  }
+}
+
+// ---------- socket tokens ----------
+// When the frontend is served from another origin (e.g. Vercel), the websocket goes
+// straight to the backend and can't carry the SameSite=Strict session cookie. The page
+// fetches a short-lived token through the same-origin API instead and presents it in
+// the Socket.IO handshake. It only identifies the user's workspace room.
+
+const SOCKET_TOKEN_TTL_S = 120
+
+function socketTokenKey(): Buffer {
+  const base = process.env.SOCKET_TOKEN_SECRET || env.DATA_ENCRYPTION_KEY
+  if (!base) throw new Error("socket_token_secret_missing")
+  return crypto.createHash("sha256").update(`socket-token:${base}`).digest()
+}
+
+export function signSocketToken(ctx: Pick<AuthContext, "userId" | "tenantId">, now = Date.now()): string {
+  const payload = Buffer.from(JSON.stringify({ sub: ctx.userId, tid: ctx.tenantId, exp: Math.floor(now / 1000) + SOCKET_TOKEN_TTL_S })).toString("base64url")
+  const sig = crypto.createHmac("sha256", socketTokenKey()).update(payload).digest("base64url")
+  return `${payload}.${sig}`
+}
+
+export function verifySocketToken(token: string, now = Date.now()): { userId: string; tenantId: string } | null {
+  const [payload, sig] = String(token || "").split(".")
+  if (!payload || !sig) return null
+  const expected = crypto.createHmac("sha256", socketTokenKey()).update(payload).digest()
+  const given = Buffer.from(sig, "base64url")
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))
+    if (typeof data.exp !== "number" || data.exp * 1000 < now || !data.sub || !data.tid) return null
+    return { userId: data.sub, tenantId: data.tid }
+  } catch {
+    return null
   }
 }

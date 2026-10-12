@@ -7,7 +7,7 @@ import { logAuth } from "../../../src/auth/log"
 import { sha256Hex } from "../../../src/auth/token"
 import {
   authenticate, clearSessionCookies, csrfGuard, invalidateAuth, issueCsrf, resolveAuth,
-  resolveMembership, setSessionCookies, tokenFromRequest
+  resolveMembership, setSessionCookies, signSocketToken, tokenFromRequest
 } from "../../../src/http/auth"
 import { badRequest, parse, unauthorized } from "../../../src/http/errors"
 
@@ -107,6 +107,12 @@ export default async function authRoutes(app: FastifyInstance) {
     const payload = await sessionPayload(token || "")
     if (!(req.cookies as any)?.csrf_token) issueCsrf(res)
     return res.send(payload)
+  })
+
+  /** Short-lived token for the realtime socket (see signSocketToken). */
+  app.get("/socket-token", { preHandler: authenticate }, async (req, res) => {
+    res.header("Cache-Control", "no-store")
+    return { token: signSocketToken(req.auth) }
   })
 
   app.post("/refresh", { preHandler: csrfGuard }, async (req, res) => {

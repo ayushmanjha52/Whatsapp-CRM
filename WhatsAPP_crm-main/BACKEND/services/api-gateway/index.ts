@@ -9,10 +9,11 @@ import { FastifyAdapter } from "@bull-board/fastify"
 import { createBullBoard } from "@bull-board/api"
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter"
 import { assertEnv, env, Queues } from "../../src/common/config"
+import { supabaseAdmin } from "../../src/common/db"
 import { createRedisConnection, queue, redis } from "../../src/common/queue"
 import { TENANT_CHANNEL_PATTERN, tenantRoom } from "../../src/common/realtime"
 import { sha256Hex } from "../../src/auth/token"
-import { authenticate, csrfGuard, resolveAuth, tokenFromCookieHeader, tokenFromRequest } from "../../src/http/auth"
+import { authenticate, csrfGuard, resolveAuth, tokenFromCookieHeader, tokenFromRequest, verifySocketToken } from "../../src/http/auth"
 import { forbidden, toErrorResponse } from "../../src/http/errors"
 import authRoutes from "./routes/auth"
 import conversationRoutes from "./routes/conversations"
@@ -63,13 +64,24 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.status(status).send(body)
   })
 
-  app.get("/healthz", async (_req, res) => {
+  // ?deep=1 also runs a tiny database query. The scheduled uptime check uses it, which
+  // doubles as activity that keeps a free Supabase project from being paused.
+  app.get("/healthz", async (req, res) => {
+    res.header("Cache-Control", "no-store")
+    const deep = (req.query as Record<string, string>)?.deep === "1"
+    const checks: Record<string, string> = {}
     try {
       await redis().ping()
-      return { ok: true }
+      checks.redis = "ok"
     } catch {
-      return res.status(503).send({ ok: false, redis: "unreachable" })
+      checks.redis = "unreachable"
     }
+    if (deep) {
+      const { error } = await supabaseAdmin().from("tenants").select("id").limit(1)
+      checks.database = error ? "unreachable" : "ok"
+    }
+    const ok = Object.values(checks).every(v => v === "ok")
+    return res.status(ok ? 200 : 503).send({ ok, ...checks })
   })
 
   await app.register(authRoutes, { prefix: "/api/auth" })
@@ -162,6 +174,13 @@ function startRealtime(app: FastifyInstance) {
   io.use(async (socket: any, next: any) => {
     try {
       const h = socket.handshake || {}
+      // Cross-origin frontends (Vercel) send a signed socket token; same-origin ones send the cookie.
+      if (h.auth?.token) {
+        const claims = verifySocketToken(h.auth.token)
+        if (!claims) return next(new Error("unauthorized"))
+        socket.data = { auth: claims }
+        return next()
+      }
       const token = tokenFromCookieHeader(h.headers?.cookie, h.headers?.authorization)
       socket.data = { auth: await resolveAuth(token) }
       next()
