@@ -1,0 +1,10 @@
+# Vercel only builds the frontend; keep the backend and any secrets out of CLI uploads.
+/*
+!WhatsAPP_crm-main
+WhatsAPP_crm-main/*
+!WhatsAPP_crm-main/frontend
+WhatsAPP_crm-main/frontend/node_modules
+WhatsAPP_crm-main/frontend/dist
+WhatsAPP_crm-main/frontend/.vercel
+WhatsAPP_crm-main/frontend/.env*
+!WhatsAPP_crm-main/frontend/.env.example
