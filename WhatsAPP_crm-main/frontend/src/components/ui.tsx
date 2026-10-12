@@ -18,7 +18,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
   secondary: 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300',
   ghost: 'text-slate-600 hover:bg-slate-100',
   danger: 'bg-white text-danger border border-rose-200 hover:bg-rose-50',
-  dark: 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/10',
+  dark: 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-black/40',
   success: 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/20'
 };
 const SIZES: Record<ButtonSize, string> = {
@@ -229,7 +229,7 @@ export const MessageStatusIcon: React.FC<{ status: MessageStatus | null; classNa
     case 'delivered':
       return <CheckCheck size={14} className={className} aria-label="Delivered" />;
     case 'read':
-      return <CheckCheck size={14} className={cn('text-sky-500', className)} aria-label="Read" />;
+      return <CheckCheck size={14} className={cn('text-info', className)} aria-label="Read" />;
     case 'failed':
       return <AlertCircle size={14} className={cn('text-danger', className)} aria-label="Failed" />;
     default:
@@ -298,7 +298,7 @@ export const Modal: React.FC<{
   const width = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }[size];
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
       <div
         ref={panel}
         role="dialog"

@@ -1,19 +1,19 @@
-/** Chart/identity colors. Validated with the dataviz palette checker (light surface). */
+/** Chart/identity colors for the dark theme. Checked with a palette validator against the #141416 surface. */
 export const SERIES = {
-  inbound: '#2563eb',
-  outbound: '#eb6834'
+  inbound: '#199e70',
+  outbound: '#9085e9'
 };
 
 /** Categorical slots in fixed order; a stage keeps its color by position everywhere. */
-const STAGE_SLOTS = ['#2a78d6', '#eda100', '#4a3aa7', '#1baf7a', '#eb6834', '#e87ba4'];
+const STAGE_SLOTS = ['#3987e5', '#c98500', '#9085e9', '#199e70', '#d95926', '#d55181'];
 
 export function stageColor(index: number): string {
   return STAGE_SLOTS[index % STAGE_SLOTS.length];
 }
 
 export const INK = {
-  primary: '#0f172a',
-  secondary: '#64748b',
-  muted: '#94a3b8',
-  grid: '#eef2f6'
+  primary: '#f3f0ea',
+  secondary: '#918f89',
+  muted: '#6f6e69',
+  grid: '#232327'
 };

@@ -174,7 +174,7 @@ export const Layout: React.FC = () => {
         cn(
           'relative flex items-center rounded-xl transition-all duration-200 group h-11',
           collapsed ? 'justify-center px-2' : 'gap-3 px-4',
-          isActive ? 'bg-primary text-white shadow-glow' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+          isActive ? 'bg-primary text-white shadow-glow' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
         )
       }
     >
@@ -190,10 +190,10 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {mobileOpen && <div className="fixed inset-0 bg-slate-900/50 z-30 lg:hidden" onClick={() => setMobileOpen(false)} />}
+      {mobileOpen && <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setMobileOpen(false)} />}
       <aside
         className={cn(
-          'bg-sidebar flex flex-col flex-shrink-0 z-40 transition-all duration-300 border-r border-slate-800',
+          'bg-sidebar flex flex-col flex-shrink-0 z-40 transition-all duration-300 border-r border-slate-200',
           'fixed inset-y-0 left-0 lg:static',
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
           collapsed ? 'lg:w-20 w-64' : 'w-64'
@@ -201,23 +201,23 @@ export const Layout: React.FC = () => {
       >
         <button
           onClick={() => setCollapsed(c => !c)}
-          className="hidden lg:flex absolute -right-3 top-8 bg-slate-800 border border-slate-700 text-slate-400 hover:text-white rounded-full p-1 shadow-lg z-50"
+          className="hidden lg:flex absolute -right-3 top-8 bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-900 rounded-full p-1 shadow-lg z-50"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
         <div className="p-4 flex flex-col h-full">
-          <div className={cn('flex items-center text-white mb-8 mt-2 h-10', collapsed ? 'lg:justify-center gap-3' : 'gap-3')}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-blue-400 flex items-center justify-center shadow-lg shadow-blue-500/20 flex-shrink-0">
+          <div className={cn('flex items-center text-slate-900 mb-8 mt-2 h-10', collapsed ? 'lg:justify-center gap-3' : 'gap-3')}>
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-glow flex-shrink-0">
               <MessageSquare size={20} className="text-white" />
             </div>
-            <span className={cn('font-display font-bold text-lg tracking-tight whitespace-nowrap', collapsed && 'lg:hidden')}>WhatsApp CRM</span>
+            <span className={cn('font-display text-[22px] leading-none whitespace-nowrap', collapsed && 'lg:hidden')}>WhatsApp CRM</span>
             <button className="ml-auto lg:hidden text-slate-400" onClick={() => setMobileOpen(false)} aria-label="Close menu">
               <X size={20} />
             </button>
           </div>
           <nav className="space-y-1 flex-1">{NAV.map(n => item(n.to, n.label, n.icon, n.badge ? unread : undefined))}</nav>
-          <div className="pt-4 border-t border-slate-800 space-y-1">
+          <div className="pt-4 border-t border-slate-200 space-y-1">
             {item('/settings', 'Settings', Settings)}
             <button
               onClick={async () => {

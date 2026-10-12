@@ -41,12 +41,12 @@ const Kpi: React.FC<{ label: string; value: React.ReactNode; sub?: React.ReactNo
 const ChartTooltip: React.FC<any> = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-slate-900 text-white rounded-xl px-3 py-2 shadow-xl text-xs">
+    <div className="bg-slate-100 text-slate-900 border border-slate-200 rounded-xl px-3 py-2 shadow-xl text-xs">
       <p className="font-semibold mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full" style={{ background: p.color || p.fill }} />
-          <span className="text-slate-300">{p.name}</span>
+          <span className="text-slate-500">{p.name}</span>
           <span className="font-bold ml-auto pl-3">{p.value}</span>
         </p>
       ))}
@@ -131,7 +131,7 @@ export default function Dashboard() {
                 <CartesianGrid vertical={false} stroke={INK.grid} />
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: INK.muted, fontSize: 12 }} dy={8} interval="preserveStartEnd" minTickGap={16} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: INK.muted, fontSize: 12 }} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }} />
+                <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#3b3b40', strokeWidth: 1 }} />
                 <Line isAnimationActive={false} type="monotone" name="Inbound" dataKey="inbound" stroke={SERIES.inbound} strokeWidth={2} dot={days <= 7 ? { r: 4, fill: SERIES.inbound, stroke: '#fff', strokeWidth: 2 } : false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />
                 <Line isAnimationActive={false} type="monotone" name="Outbound" dataKey="outbound" stroke={SERIES.outbound} strokeWidth={2} dot={days <= 7 ? { r: 4, fill: SERIES.outbound, stroke: '#fff', strokeWidth: 2 } : false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />
               </LineChart>
@@ -149,7 +149,7 @@ export default function Dashboard() {
                 <BarChart data={r.buckets} layout="vertical" margin={{ top: 0, right: 36, bottom: 0, left: 8 }} barSize={18}>
                   <XAxis type="number" hide allowDecimals={false} />
                   <YAxis dataKey="range" type="category" axisLine={false} tickLine={false} width={60} tick={{ fill: INK.secondary, fontSize: 12, fontWeight: 600 }} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                   <Bar isAnimationActive={false} dataKey="count" name="Conversations" fill={SERIES.inbound} radius={[0, 4, 4, 0]}>
                     <LabelList dataKey="count" position="right" fill={INK.secondary} fontSize={12} fontWeight={600} />
                   </Bar>

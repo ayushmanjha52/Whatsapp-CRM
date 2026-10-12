@@ -41,7 +41,7 @@ export const TemplateBubble: React.FC<{
       {shape.buttons.length > 0 && (
         <div className="mt-1 space-y-1">
           {shape.buttons.map((b, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm py-2 text-center text-[13px] font-medium text-sky-600 flex items-center justify-center gap-1.5">
+            <div key={i} className="bg-white rounded-xl shadow-sm py-2 text-center text-[13px] font-medium text-primary flex items-center justify-center gap-1.5">
               {b.type === 'URL' ? <ExternalLink size={13} /> : b.type === 'PHONE_NUMBER' ? <Phone size={13} /> : <Reply size={13} />}
               {b.text}
             </div>
@@ -54,8 +54,8 @@ export const TemplateBubble: React.FC<{
 
 /** Phone mockup used for live previews. */
 export const PhoneFrame: React.FC<{ businessName: string; children: React.ReactNode }> = ({ businessName, children }) => (
-  <div className="w-[300px] mx-auto rounded-[2.5rem] border-[10px] border-slate-900 bg-slate-900 shadow-2xl overflow-hidden">
-    <div className="bg-whatsapp text-white px-4 pt-5 pb-3 flex items-center gap-3">
+  <div className="w-[300px] mx-auto rounded-[2.5rem] border-[10px] border-black bg-black shadow-2xl ring-1 ring-slate-200 overflow-hidden">
+    <div className="bg-whatsapp text-slate-900 px-4 pt-5 pb-3 flex items-center gap-3">
       <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">{businessName.slice(0, 1).toUpperCase()}</div>
       <div className="leading-tight">
         <p className="text-sm font-semibold">{businessName}</p>

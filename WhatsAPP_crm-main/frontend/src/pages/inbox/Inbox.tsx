@@ -71,7 +71,7 @@ export default function Inbox() {
 
       {contact && showDetails && (
         <>
-          <div className="fixed inset-0 bg-slate-900/30 z-30 xl:hidden" onClick={() => setShowDetails(false)} />
+          <div className="fixed inset-0 bg-black/60 z-30 xl:hidden" onClick={() => setShowDetails(false)} />
           <div className="fixed right-0 inset-y-0 z-40 w-[340px] max-w-full shadow-2xl xl:shadow-none xl:static xl:z-auto border-l border-slate-200 flex-shrink-0">
             <ContactPanel contact={contact} onClose={() => setShowDetails(false)} />
           </div>

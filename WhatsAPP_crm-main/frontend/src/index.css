@@ -1,27 +1,107 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/*
+ * Dark theme.
+ *
+ * Components are written with ordinary Tailwind names; the palette below is
+ * remapped so those names produce the dark look:
+ *   white      → card surface
+ *   slate-50…  → runs from ink (50) up to paper (900), so text-slate-900 is the
+ *                brightest text and bg-slate-50 the deepest panel
+ *   *-50/100   → deep tints for backgrounds, *-600/700 → light tints for text
+ *   primary    → the signature chartreuse; text on it uses `text-white`, which
+ *                is the dark surface colour
+ */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Plus Jakarta Sans", "Inter", ui-sans-serif, sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-light: rgb(37 99 235 / 0.1);
-  --color-secondary: #475569;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  --color-info: #3b82f6;
-  --color-sidebar: #0f172a;
-  --color-background: #f1f5f9;
-  --color-whatsapp: #075e54;
-  --color-whatsapp-bubble: #d9fdd3;
-  --color-whatsapp-chat: #efeae2;
+  --color-ink: #0b0b0c;
+  --color-white: #141416;
 
-  --shadow-glow: 0 0 15px rgb(37 99 235 / 0.3);
-  --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -1px rgb(0 0 0 / 0.03);
-  --shadow-card-hover: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -2px rgb(0 0 0 / 0.04);
+  --color-slate-50: #101012;
+  --color-slate-100: #1b1b1e;
+  --color-slate-200: #27272b;
+  --color-slate-300: #3b3b40;
+  --color-slate-400: #6f6e69;
+  --color-slate-500: #918f89;
+  --color-slate-600: #b2b0aa;
+  --color-slate-700: #cdcbc5;
+  --color-slate-800: #e3e1db;
+  --color-slate-900: #f3f0ea;
+
+  --color-primary: #c8f26b;
+  --color-primary-hover: #d7f78f;
+  --color-primary-light: rgb(200 242 107 / 0.12);
+  --color-secondary: #918f89;
+  --color-success: #4fd18b;
+  --color-warning: #f2b54a;
+  --color-danger: #f26b6b;
+  --color-info: #7ab4ff;
+  --color-sidebar: #0b0b0c;
+  --color-background: #0b0b0c;
+  --color-whatsapp: #0f3b33;
+  --color-whatsapp-bubble: #1d3a2c;
+  --color-whatsapp-chat: #0e100f;
+
+  /* "blue" is the accent family */
+  --color-blue-50: #171c0e;
+  --color-blue-100: #1f2612;
+  --color-blue-200: #2c3619;
+  --color-blue-400: #d7f78f;
+  --color-blue-500: #c8f26b;
+  --color-blue-600: #c8f26b;
+  --color-blue-700: #dcf79f;
+  --color-blue-800: #e6fab8;
+  --color-blue-900: #effcd2;
+
+  --color-emerald-50: #0f1f17;
+  --color-emerald-100: #142a1f;
+  --color-emerald-200: #1d3b2c;
+  --color-emerald-500: #3fbf7f;
+  --color-emerald-600: #5fd498;
+  --color-emerald-700: #86e3b3;
+  --color-emerald-800: #a6ecc7;
+  --color-emerald-900: #c4f3da;
+
+  --color-rose-50: #231315;
+  --color-rose-100: #351719;
+  --color-rose-200: #4a1e22;
+  --color-rose-500: #f26b6b;
+  --color-rose-600: #ff8a8a;
+  --color-rose-700: #ffa3a3;
+  --color-rose-800: #ffbcbc;
+  --color-rose-900: #ffd2d2;
+
+  --color-amber-50: #231b0d;
+  --color-amber-100: #322611;
+  --color-amber-200: #463416;
+  --color-amber-300: #6b5020;
+  --color-amber-500: #f2b54a;
+  --color-amber-600: #f5c46d;
+  --color-amber-700: #f7cf86;
+  --color-amber-800: #f9dba3;
+  --color-amber-900: #fbe6bf;
+
+  --color-violet-50: #1a1527;
+  --color-violet-100: #241c38;
+  --color-violet-200: #33284e;
+  --color-violet-500: #9d8cf0;
+  --color-violet-600: #b3a5f5;
+  --color-violet-700: #c9bff9;
+  --color-violet-800: #d9d2fb;
+  --color-violet-900: #e7e2fc;
+
+  --color-cyan-100: #10262a;
+  --color-cyan-700: #8fdbe6;
+  --color-orange-100: #2d1b0f;
+  --color-orange-700: #f7b98a;
+
+  --shadow-glow: 0 0 0 1px rgb(200 242 107 / 0.35), 0 8px 24px -8px rgb(200 242 107 / 0.35);
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card-hover: 0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 12px 32px -12px rgb(0 0 0 / 0.7);
 
   --animate-marquee: marquee 40s linear infinite;
 
@@ -31,31 +111,59 @@
   }
 }
 
-@utility perspective-1000 {
-  perspective: 1000px;
-}
-
 @layer base {
   html, body, #root {
     height: 100%;
   }
+  html {
+    color-scheme: dark;
+  }
   body {
     @apply bg-background font-sans text-slate-800 antialiased;
+    font-feature-settings: "ss01", "cv11";
   }
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-display;
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    /* Instrument Serif ships one weight: never fake a bold. */
+    font-synthesis-weight: none;
+    letter-spacing: -0.01em;
+  }
+  ::selection {
+    background: rgb(200 242 107 / 0.3);
+    color: #f3f0ea;
   }
   button:not(:disabled), [role="button"] {
     cursor: pointer;
   }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  ::-webkit-scrollbar-thumb { background: #2a2a2e; border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #3b3b40; background-clip: padding-box; }
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+}
+
+@utility perspective-1000 {
+  perspective: 1000px;
+}
+
+/* Tabular figures for numbers that update in place. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-wallpaper {
   background-color: var(--color-whatsapp-chat);
-  background-image: radial-gradient(rgb(0 0 0 / 0.035) 1px, transparent 1px);
+  background-image: radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
   background-size: 18px 18px;
+}
+
+/* Fine film grain over the landing page, so large dark areas don't look flat. */
+.grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }

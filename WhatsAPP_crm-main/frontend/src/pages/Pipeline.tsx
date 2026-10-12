@@ -243,7 +243,7 @@ export default function Pipeline() {
               >
                 <div className="p-4 bg-white rounded-t-2xl border-b border-slate-200/70">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                    <h3 className="font-sans font-semibold text-xs text-slate-800 uppercase tracking-[0.12em] flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ background: stageColor(i) }} />
                       {stage.name}
                     </h3>

@@ -74,7 +74,7 @@ function MediaBlock({ m, out }: { m: Message; out: boolean }) {
           href={media.url}
           target="_blank"
           rel="noopener noreferrer"
-          className={cn('flex items-center gap-3 p-2.5 rounded-xl mb-1', out ? 'bg-white/15 hover:bg-white/20' : 'bg-slate-50 hover:bg-slate-100 border border-slate-100')}
+          className={cn('flex items-center gap-3 p-2.5 rounded-xl mb-1', out ? 'bg-black/10 hover:bg-black/15' : 'bg-slate-50 hover:bg-slate-100 border border-slate-100')}
         >
           <FileText size={22} className={out ? 'text-white' : 'text-primary'} />
           <span className="text-sm font-medium truncate flex-1">{media.filename || 'Document'}</span>
@@ -129,7 +129,7 @@ export const MessageBubble: React.FC<{ m: Message; showTail?: boolean }> = ({ m,
         {m.type === 'unsupported' && <p className="italic opacity-70">This message type isn't supported yet.</p>}
         <div className={cn('flex items-center justify-end gap-1 mt-0.5 text-[10px]', out ? 'text-blue-100' : 'text-slate-400')}>
           <span>{time(m.created_at)}</span>
-          {out && <MessageStatusIcon status={m.status} className={m.status === 'read' ? '!text-sky-200' : undefined} />}
+          {out && <MessageStatusIcon status={m.status} className={m.status === 'read' ? '!text-sky-800' : undefined} />}
         </div>
         {m.status === 'failed' && (
           <p className="mt-1 mb-0.5 text-[11px] font-medium flex items-start gap-1 text-rose-100 bg-danger/80 rounded-lg px-2 py-1">
