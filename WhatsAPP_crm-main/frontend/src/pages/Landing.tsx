@@ -1,9 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, ArrowUpRight, Check, CheckCheck, Github, MessageSquare, Search } from 'lucide-react';
+import { ArrowRight, Check, CheckCheck, MessageSquare, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
-const REPO_URL = 'https://github.com/ayushmanjha52/Whatsapp-CRM';
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -156,9 +154,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => (
           <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
           <a href="#how" className="hover:text-slate-900 transition-colors">How it works</a>
           <a href="#pricing" className="hover:text-slate-900 transition-colors">Pricing</a>
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 transition-colors inline-flex items-center gap-1.5">
-            <Github size={15} /> GitHub
-          </a>
         </nav>
         <div className="flex items-center gap-2">
           <Link to="/login" className="hidden sm:inline-flex h-9 items-center px-3.5 text-sm text-slate-700 hover:text-slate-900">Sign in</Link>
@@ -305,11 +300,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => (
     </main>
 
     <footer className="border-t border-slate-200">
-      <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-sm text-slate-500">
+      <div className="max-w-6xl mx-auto px-6 py-10 text-sm text-slate-500">
         <p>© {new Date().getFullYear()} WhatsApp CRM. Not affiliated with WhatsApp or Meta.</p>
-        <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-slate-900 transition-colors">
-          Source on GitHub <ArrowUpRight size={14} />
-        </a>
       </div>
     </footer>
   </div>
